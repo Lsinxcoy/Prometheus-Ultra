@@ -152,16 +152,39 @@ class FourNetworkMemory:
 
         "Reflections are higher-level, more abstract thoughts that
          synthesize and reason over raw memories"
+
+        Enhanced with cross-network synthesis.
         """
-        memories = self.recall(query, top_k=num_reflections * 2)
+        memories = self.recall(query, top_k=num_reflections * 3)
         reflections = []
+
+        networks_used = set(m.get("network", "") for m in memories)
+        high_importance = [m for m in memories if m.get("importance", 0) > 0.7]
+
+        if high_importance:
+            summary = "; ".join(m["content"][:60] for m in high_importance[:2])
+            reflections.append(
+                f"Key insight from {len(high_importance)} high-importance memories: {summary}"
+            )
+
+        if len(networks_used) > 1:
+            reflections.append(
+                f"Cross-network synthesis across {len(networks_used)} networks: "
+                f"{', '.join(networks_used)}"
+            )
+
         for i in range(min(num_reflections, len(memories))):
             mem = memories[i]
-            reflection = f"Based on '{mem['content'][:80]}...' (network: {mem['network']}, " \
-                        f"importance: {mem['importance']:.2f}), I can conclude that " \
-                        f"this is relevant to {query}."
+            reflection = (
+                f"[{mem.get('network', 'unknown')}] "
+                f"'{mem['content'][:80]}...' "
+                f"(importance={mem.get('importance', 0):.2f}, "
+                f"relevance={mem.get('relevance', 0):.2f}) — "
+                f"relevant to {query} because of shared concepts."
+            )
             reflections.append(reflection)
-        return reflections
+
+        return reflections[:num_reflections + 1]
 
     def get_stats(self) -> dict:
         return {

@@ -54,12 +54,20 @@ class DreamCycle:
 
     def register_memory(self, memory) -> None:
         """Register a memory for dream processing."""
-        self._memories.append({
-            "id": getattr(memory, 'id', str(len(self._memories))),
-            "content": getattr(memory, 'content', ''),
-            "utility": getattr(memory, 'utility', 0.5),
-            "tags": getattr(memory, 'tags', []),
-        })
+        if isinstance(memory, dict):
+            self._memories.append({
+                "id": memory.get("id", str(len(self._memories))),
+                "content": memory.get("content", ""),
+                "utility": memory.get("utility", 0.5),
+                "tags": memory.get("tags", []),
+            })
+        else:
+            self._memories.append({
+                "id": getattr(memory, 'id', str(len(self._memories))),
+                "content": getattr(memory, 'content', ''),
+                "utility": getattr(memory, 'utility', 0.5),
+                "tags": getattr(memory, 'tags', []),
+            })
 
     def run_cycle(self, branch: str = "main") -> DreamResult:
         """Run a dream cycle to discover patterns and synthesize beliefs."""
@@ -131,10 +139,10 @@ class DreamCycle:
             for tag in mem.get("tags", []):
                 tag_utils.setdefault(tag, []).append(mem.get("utility", 0.5))
         for tag, utils in tag_utils.items():
-            if len(utils) >= 3:
+            if len(utils) >= 2:  # Relaxed from 3 to 2
                 avg = sum(utils) / len(utils)
                 consistency = 1.0 - (max(utils) - min(utils))
-                if avg > 0.6 and consistency > 0.3:
+                if avg > 0.4 and consistency > 0.2:  # Relaxed thresholds
                     beliefs.append({"topic": tag, "confidence": avg * consistency,
                                     "evidence": len(utils)})
         return beliefs[:10]

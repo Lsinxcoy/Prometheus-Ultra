@@ -158,11 +158,26 @@ class ReflexionEngine:
 
         return reflection
 
-    def get_reflection_context(self, top_k: int = 3) -> str:
-        """Get the most recent reflections as context for the next attempt.
+    def get_reflection_context(self, top_k: int = 3, query: str = "") -> str:
+        """Get relevant reflections as context for the next attempt.
 
         From paper: "retrieval of relevant past reflections improves subsequent attempts"
+        If query provided, retrieves by keyword relevance; otherwise by recency.
         """
+        if query and self._reflections:
+            query_words = set(query.lower().split())
+            scored = []
+            for r in self._reflections:
+                reflection_words = set(r.action.lower().split())
+                relevance = len(query_words & reflection_words)
+                scored.append((relevance, r))
+            scored.sort(key=lambda x: -x[0])
+            relevant = [r for _, r in scored[:top_k] if scored[0][0] > 0]
+            if relevant:
+                return "Relevant reflections:\n" + "\n".join(
+                    f"- {r.critique} → {r.improvement_suggestion}" for r in relevant
+                )
+
         recent = self._reflection_memory[-top_k:]
         if not recent:
             return ""

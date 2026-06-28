@@ -23,7 +23,7 @@ class RLPathologyDetector:
     def observe(self, reward: float, action: str = ""):
         self._rewards.append(reward)
         self._actions.append(action)
-        for alert in self._detect_all():
+        for alert in self.detect_all():
             self._alerts.append(alert)
             self._alert_counts[alert.pathology] = self._alert_counts.get(alert.pathology, 0) + 1
 

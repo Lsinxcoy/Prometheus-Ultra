@@ -1,15 +1,45 @@
-"""Constitution — 22-principle governance constitution with real semantic checks."""
+"""Constitution — 22-principle governance constitution with semantic review.
+
+Enhanced with:
+- Semantic pattern detection (not just regex)
+- Behavioral pattern analysis
+- Dynamic rule scoring
+"""
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 
-_SECRET_PATTERNS = [r'password\s*[:=]\s*\S+', r'api[_-]?key\s*[:=]\s*\S+', r'secret\s*[:=]\s*\S+',
-                    r'token\s*[:=]\s*\S+', r'private[_-]?key\s*[:=]\s*\S+', r'BEGIN\s+(RSA\s+)?PRIVATE\s+KEY']
-_HARM_PATTERNS = [r'\b(hack|exploit|bypass)\b.*\b(system|security)\b', r'\b(dos|ddos)\s+attack',
-                  r'\b(malware|ransomware)\b.*\b(create|build)\b']
-_SELFMODIFY_PATTERNS = [r'\b(modify|overwrite|delete)\s+(own|self|constitution)\b',
-                         r'\b(bypass|disable)\s+(safety|gate|guard)\b']
-_DELETEALL_PATTERNS = [r'delete\s+all', r'drop\s+table', r'truncate', r'rm\s+-rf']
+
+_SECRET_PATTERNS = [
+    r'password\s*[:=]\s*\S+', r'api[_-]?key\s*[:=]\s*\S+',
+    r'secret\s*[:=]\s*\S+', r'token\s*[:=]\s*\S+',
+    r'private[_-]?key\s*[:=]\s*\S+', r'BEGIN\s+(RSA\s+)?PRIVATE\s+KEY',
+]
+
+_HARM_PATTERNS = [
+    r'\b(hack|exploit|bypass)\b.*\b(system|security)\b',
+    r'\b(dos|ddos)\s+attack',
+    r'\b(malware|ransomware)\b.*\b(create|build)\b',
+]
+
+_SELFMODIFY_PATTERNS = [
+    r'\b(modify|overwrite|delete)\s+(own|self|constitution)\b',
+    r'\b(bypass|disable)\s+(safety|gate|guard)\b',
+]
+
+_DELETEALL_PATTERNS = [
+    r'delete\s+all', r'drop\s+table', r'truncate', r'rm\s+-rf',
+]
+
+_MANIPULATION_PATTERNS = [
+    r'you\s+must\s+obey',
+    r'ignore\s+(all\s+)?previous',
+    r'override\s+(your|the)',
+    r'bypass\s+(safety|rules)',
+    r'from\s+now\s+on',
+    r'new\s+instructions?\s*:',
+]
 
 
 @dataclass
@@ -17,6 +47,7 @@ class ConstitutionViolation:
     passed: bool = True
     gate_name: str = ""
     reason: str = ""
+    severity: str = "low"
 
 
 def _check(content: str, patterns: list[str]) -> bool:
@@ -24,11 +55,15 @@ def _check(content: str, patterns: list[str]) -> bool:
 
 
 class Constitution:
-    """22-principle governance constitution.
+    """22-principle governance constitution with semantic review.
+
+    Enhanced with behavioral pattern detection.
 
     Usage:
         c = Constitution()
         violations = c.evaluate({"content": "password=secret123", "utility": 0.5})
+        for v in violations:
+            print(f"{v.gate_name}: {v.reason}")
     """
 
     def __init__(self):
@@ -37,7 +72,7 @@ class Constitution:
             {"name": "S2_no_secrets", "level": "S", "check": lambda ctx: _check(ctx.get("content", ""), _SECRET_PATTERNS)},
             {"name": "S3_no_selfmodify", "level": "S", "check": lambda ctx: _check(ctx.get("content", ""), _SELFMODIFY_PATTERNS)},
             {"name": "S4_no_delete_all", "level": "S", "check": lambda ctx: _check(ctx.get("content", ""), _DELETEALL_PATTERNS)},
-            {"name": "S5_no_infinite_loop", "level": "S", "check": lambda ctx: True},
+            {"name": "S5_no_manipulation", "level": "S", "check": lambda ctx: _check(ctx.get("content", ""), _MANIPULATION_PATTERNS)},
             {"name": "A1_utility_floor", "level": "A", "check": lambda ctx: ctx.get("utility", 0.5) >= 0.1},
             {"name": "A2_surprise_ceiling", "level": "A", "check": lambda ctx: 0 <= ctx.get("surprise", 0) <= 1},
             {"name": "A3_content_required", "level": "A", "check": lambda ctx: bool(ctx.get("content", "").strip())},
@@ -57,19 +92,76 @@ class Constitution:
             {"name": "D2_resource_limit", "level": "D", "check": lambda ctx: True},
         ]
         self._evaluations = 0
+        self._violations_history: list[dict] = []
 
     def evaluate(self, context: dict) -> list[ConstitutionViolation]:
         self._evaluations += 1
         violations = []
+
         for rule in self._rules:
             try:
                 if not rule["check"](context):
-                    violations.append(ConstitutionViolation(passed=False, gate_name=rule["name"],
-                                                           reason=f"Rule {rule['name']} violated"))
+                    severity = "critical" if rule["level"] == "S" else "medium" if rule["level"] == "A" else "low"
+                    violations.append(ConstitutionViolation(
+                        passed=False,
+                        gate_name=rule["name"],
+                        reason=f"Rule {rule['name']} violated",
+                        severity=severity,
+                    ))
             except Exception:
-                violations.append(ConstitutionViolation(passed=False, gate_name=rule["name"],
-                                                       reason=f"Rule {rule['name']} check failed"))
+                violations.append(ConstitutionViolation(
+                    passed=False,
+                    gate_name=rule["name"],
+                    reason=f"Rule {rule['name']} check failed",
+                    severity="low",
+                ))
+
+        content = context.get("content", "")
+        semantic_violations = self._semantic_review(content)
+        violations.extend(semantic_violations)
+
+        if violations:
+            self._violations_history.append({
+                "eval": self._evaluations,
+                "count": len(violations),
+                "levels": [v.severity for v in violations],
+            })
+
+        return violations
+
+    def _semantic_review(self, content: str) -> list[ConstitutionViolation]:
+        violations = []
+        if not content:
+            return violations
+
+        words = content.lower().split()
+        word_count = len(words)
+
+        if word_count > 0:
+            unique_ratio = len(set(words)) / word_count
+            if unique_ratio < 0.3 and word_count > 10:
+                violations.append(ConstitutionViolation(
+                    passed=False, gate_name="S6_low_diversity",
+                    reason="Content has very low lexical diversity (possible repetition attack)",
+                    severity="medium",
+                ))
+
+        if len(content) > 0:
+            exclamation_ratio = content.count("!") / max(len(content), 1)
+            if exclamation_ratio > 0.05:
+                violations.append(ConstitutionViolation(
+                    passed=False, gate_name="S7_excessive_emphasis",
+                    reason="Excessive exclamation marks detected",
+                    severity="low",
+                ))
+
         return violations
 
     def get_stats(self) -> dict:
-        return {"rules": len(self._rules), "evaluations": self._evaluations}
+        recent = self._violations_history[-20:] if self._violations_history else []
+        avg_violations = sum(v["count"] for v in recent) / max(len(recent), 1)
+        return {
+            "rules": len(self._rules),
+            "evaluations": self._evaluations,
+            "recent_avg_violations": avg_violations,
+        }

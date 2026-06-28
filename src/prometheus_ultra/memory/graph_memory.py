@@ -247,7 +247,8 @@ class GraphMemory:
 
     def _compute_direct_score(self, query_lower: str, query_words: set[str],
                                episode: EpisodeEvent) -> float:
-        """Compute direct match score for an episode."""
+        """Compute direct match score with temporal weighting."""
+        import time
         score = 0.0
         content_lower = episode.content.lower()
 
@@ -271,6 +272,12 @@ class GraphMemory:
 
         # Importance bonus
         score *= (0.5 + episode.importance * 0.5)
+
+        # Temporal weighting: more recent = higher score
+        if hasattr(episode, 'metadata') and episode.metadata.get('timestamp'):
+            age_hours = (time.time() - episode.metadata['timestamp']) / 3600
+            recency_boost = 1.0 + max(0, 0.3 - age_hours * 0.01)
+            score *= recency_boost
 
         return min(score, 2.0)
 
