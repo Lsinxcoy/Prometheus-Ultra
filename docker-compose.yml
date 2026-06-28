@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  omega:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - OMEGA_DB=/app/data/prometheus_ultra.db
+      - OMEGA_LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "python", "-c", "from prometheus_ultra import Omega; o=Omega(); print(o.status().health)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

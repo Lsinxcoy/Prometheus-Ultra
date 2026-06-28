@@ -1,0 +1,32 @@
+"""Prometheus Ultra — 99-mechanism self-evolving AI agent reinforcement system.
+
+Unified from Genesis(99 mechanisms), Omega-Omega(90 mechanisms, branch system),
+and Z:\Prometheus Ω(47 mechanisms, deep evolution + 4-layer defense).
+"""
+
+from prometheus_ultra.life import Omega
+from prometheus_ultra.foundation.schema import (
+    MemoryLayer, NodeType, EdgeType, TrustLevel, AutonomyLevel,
+    SecurityPosture, EvolutionDirection, LifecycleAction, GateResult,
+    CommitState, ProvenanceType, ConstraintKind, WriteOperator,
+    Strictness, RiskLevel, GraderType, EvolutionResult, MemoryScope,
+    MemoryTier, FailureMode, AlertLevel,
+    generate_uuidv7,
+    WeibullParams, NodeFeedback, FailureLog, Node, Edge,
+    Constraint, Provenance,
+    GateCheckResult, WriteGateResult, LifecycleDecision,
+    EvolutionCheckResult, VerificationResult, HookResult,
+    SearchHit, SearchResults, DreamResult, EvolutionOutcome,
+    SystemStatus, ZConfig,
+)
+from prometheus_ultra.foundation.store import MinervaStore, IronLawViolation
+
+__version__ = "1.0.0"
+
+__all__ = [
+    "Omega",
+    "MinervaStore", "IronLawViolation",
+    "NodeType", "EdgeType", "MemoryTier", "GateResult", "EvolutionResult",
+    "Node", "Edge", "ZConfig", "generate_uuidv7",
+    "SearchResults", "DreamResult", "EvolutionOutcome", "SystemStatus",
+]

@@ -1,0 +1,165 @@
+"""DreamCycle — Memory synthesis with pattern discovery.
+
+Algorithm:
+    1. Co-occurrence analysis (PMI)
+    2. Belief synthesis (utility aggregation)
+    3. Connection discovery (shared tags)
+
+    Co-occurrence:
+        For each pair of words in memory content:
+            co_count(word_a, word_b) += 1
+        PMI(a,b) = log2(P(a,b) / (P(a) × P(b)))
+        High PMI = strong association
+
+    Belief synthesis:
+        For each tag with ≥3 memories:
+            avg_utility = mean(utilities)
+            consistency = 1 - (max - min)
+            if avg > 0.6 and consistency > 0.3:
+                synthesize belief
+
+    Connection discovery:
+        For each pair of memories with ≥2 shared tags:
+            record connection with shared tags
+
+Complexity:
+    run_cycle(): O(N²) where N = memories
+    dream(): O(N²)
+"""
+from __future__ import annotations
+
+import time
+from collections import Counter
+from dataclasses import dataclass, field
+
+from prometheus_ultra.foundation.schema import DreamResult
+
+
+class DreamCycle:
+    """Memory synthesis with pattern discovery.
+
+    Usage:
+        dc = DreamCycle()
+        dc.register_memory({"id": "e1", "content": "AI research", "utility": 0.8, "tags": ["ai"]})
+        dc.register_memory({"id": "e2", "content": "neural networks", "utility": 0.7, "tags": ["ai", "ml"]})
+
+        result = dc.run_cycle()
+        print(f"Patterns: {result.patterns_found}, Beliefs: {result.beliefs_synthesized}")
+    """
+
+    def __init__(self):
+        self._memories: list[dict] = []
+        self._dreams: list[dict] = []
+        self._beliefs: list[dict] = []
+
+    def register_memory(self, memory) -> None:
+        """Register a memory for dream processing."""
+        self._memories.append({
+            "id": getattr(memory, 'id', str(len(self._memories))),
+            "content": getattr(memory, 'content', ''),
+            "utility": getattr(memory, 'utility', 0.5),
+            "tags": getattr(memory, 'tags', []),
+        })
+
+    def run_cycle(self, branch: str = "main") -> DreamResult:
+        """Run a dream cycle to discover patterns and synthesize beliefs."""
+        patterns = self._discover_patterns()
+        beliefs = self._synthesize_beliefs()
+        connections = self._discover_connections()
+
+        self._dreams.append({
+            "ts": time.time(), "patterns": len(patterns),
+            "beliefs": len(beliefs), "connections": len(connections),
+        })
+        self._beliefs.extend(beliefs)
+
+        return DreamResult(
+            patterns_found=len(patterns),
+            beliefs_synthesized=len(beliefs),
+            connections_discovered=len(connections),
+        )
+
+    def dream(self, memories: list | None = None) -> dict:
+        """Alternative dream interface returning dict."""
+        mems = memories or self._memories
+        p = self._discover_patterns_from(mems)
+        b = self._synthesize_beliefs_from(mems)
+        c = self._discover_connections_from(mems)
+        return {"patterns_found": len(p), "beliefs_synthesized": len(b),
+                "connections_discovered": len(c)}
+
+    def _discover_patterns(self) -> list[dict]:
+        return self._discover_patterns_from(self._memories)
+
+    def _discover_patterns_from(self, memories: list) -> list[dict]:
+        patterns = []
+        if len(memories) < 3:
+            return patterns
+
+        word_docs: Counter = Counter()
+        word_pairs: Counter = Counter()
+
+        for mem in memories:
+            words = set(w.lower() for w in mem.get("content", "").split() if len(w) > 3)
+            for w in words:
+                word_docs[w] += 1
+            wl = sorted(words)
+            for i in range(len(wl)):
+                for j in range(i + 1, min(i + 5, len(wl))):
+                    word_pairs[(wl[i], wl[j])] += 1
+
+        total = len(memories)
+        for (w1, w2), count in word_pairs.most_common(20):
+            if count >= 2:
+                p1 = word_docs[w1] / total
+                p2 = word_docs[w2] / total
+                p_co = count / total
+                if p1 * p2 > 0:
+                    pmi = p_co / (p1 * p2)
+                    if pmi > 1.0:
+                        patterns.append({"pair": (w1, w2), "pmi": pmi, "count": count})
+
+        return patterns
+
+    def _synthesize_beliefs(self) -> list[dict]:
+        return self._synthesize_beliefs_from(self._memories)
+
+    def _synthesize_beliefs_from(self, memories: list) -> list[dict]:
+        beliefs = []
+        tag_utils: dict[str, list[float]] = {}
+        for mem in memories:
+            for tag in mem.get("tags", []):
+                tag_utils.setdefault(tag, []).append(mem.get("utility", 0.5))
+        for tag, utils in tag_utils.items():
+            if len(utils) >= 3:
+                avg = sum(utils) / len(utils)
+                consistency = 1.0 - (max(utils) - min(utils))
+                if avg > 0.6 and consistency > 0.3:
+                    beliefs.append({"topic": tag, "confidence": avg * consistency,
+                                    "evidence": len(utils)})
+        return beliefs[:10]
+
+    def _discover_connections(self) -> list[dict]:
+        return self._discover_connections_from(self._memories)
+
+    def _discover_connections_from(self, memories: list) -> list[dict]:
+        connections = []
+        for i in range(len(memories)):
+            for j in range(i + 1, min(i + 20, len(memories))):
+                ti = set(memories[i].get("tags", []))
+                tj = set(memories[j].get("tags", []))
+                common = ti & tj
+                if len(common) >= 2:
+                    connections.append({
+                        "source": memories[i].get("id", ""),
+                        "target": memories[j].get("id", ""),
+                        "shared": list(common),
+                    })
+        return connections[:50]
+
+    def get_stats(self) -> dict:
+        return {
+            "memories": len(self._memories),
+            "dreams": len(self._dreams),
+            "beliefs": len(self._beliefs),
+        }
