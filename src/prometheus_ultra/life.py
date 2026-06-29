@@ -181,6 +181,15 @@ from prometheus_ultra.learning.deep_retrofit_6 import DeepRetrofit6
 from prometheus_ultra.monitor.heartbeat_4cycle import Heartbeat4Cycle
 from prometheus_ultra.harness.three_layer_compression import ThreeLayerCompression
 from prometheus_ultra.learning.knowledge_to_mechanism import KnowledgeToMechanism
+from prometheus_ultra.harness.wal import WriteAheadLog
+from prometheus_ultra.safety.file_checksum import FileChecksum
+from prometheus_ultra.learning.explorer_state import ExplorerState
+from prometheus_ultra.learning.curiosity_autofill import CuriosityAutoFill
+from prometheus_ultra.learning.exploration_quota import ExplorationQuota
+from prometheus_ultra.harness.sub_agent_contract import SubAgentContract
+from prometheus_ultra.safety.rule_expiration import RuleExpirationAudit
+from prometheus_ultra.safety.capability_ceiling import CapabilityCeiling
+from prometheus_ultra.safety.cognitive_collapse import CognitiveCollapse
 
 # HarnessX
 from prometheus_ultra.evaluation.harness import HarnessX, HarnessPrimitive
@@ -391,6 +400,23 @@ class Omega:
         self.three_layer_compression = ThreeLayerCompression()
         self.knowledge_to_mechanism = KnowledgeToMechanism()
 
+        # Session continuity & file integrity
+        self.wal = WriteAheadLog()
+        self.file_checksum = FileChecksum()
+
+        # Exploration tracking
+        self.explorer_state = ExplorerState()
+        self.curiosity_autofill = CuriosityAutoFill(self.curiosity_queue)
+        self.exploration_quota = ExplorationQuota(max_daily=20, revision_after=10)
+
+        # Sub-agent & rule management
+        self.sub_agent_contract = SubAgentContract()
+        self.rule_expiration = RuleExpirationAudit()
+
+        # Scaling & cognitive safety
+        self.capability_ceiling = CapabilityCeiling()
+        self.cognitive_collapse = CognitiveCollapse()
+
         # ===== HarnessX: register primitives =====
         self.harness_x.register_primitive(
             HarnessPrimitive(name="input_guard", type="prompt", content="Check input safety")
@@ -423,6 +449,9 @@ class Omega:
                  branch: str = "main") -> str:
         tags = tags or []
         surprise = max(0.3, utility * 0.6)
+
+        # WAL: write-ahead log entry
+        self.wal.write("remember", status="started", pending=["create_node"])
 
         # Gate 0: InputGuardrail
         gr = self.input_guardrail.check(content)
@@ -1051,6 +1080,12 @@ class Omega:
     # learn pipeline
     # ============================================================
     def learn(self, source: str = "web", query: str = "AI", max_results: int = 5) -> dict:
+        # Exploration quota check
+        can_explore, reason = self.exploration_quota.can_explore()
+        if not can_explore:
+            return {"source": source, "query": query, "total_results": 0, "new_nodes": 0,
+                    "reason": reason}
+
         # EvolvingPrompt: generate optimized prompt
         prompt = self.evolving_prompt.generate_prompt(
             "Learn about %s from %s" % (query, source),
@@ -1131,6 +1166,14 @@ class Omega:
             for mapping in mappings:
                 if self.knowledge_to_mechanism.apply_mapping(mapping, self):
                     applied_changes.append(mapping)
+
+        # Record exploration round
+        self.exploration_quota.record_round()
+        self.explorer_state.record_round(query, source, 0.5)
+
+        # Auto-fill curiosity queue if low
+        if self.curiosity_queue._queue and len(self.curiosity_queue._queue) < 3:
+            self.curiosity_autofill.auto_fill(count=2)
 
         return {"source": source, "query": query, "total_results": len(new_nodes),
                 "new_nodes": len(new_nodes), "applied_changes": len(applied_changes)}
@@ -1464,6 +1507,22 @@ class Omega:
             self.forgetting.compute_retention_compat(n.id, age=1.0)
             self.gravity.add_node(n.id, mass=n.utility)
             self.zscore.observe(n.utility)
+
+        # MiMo: Heartbeat 4-cycle
+        self.heartbeat_4cycle.run_cycles()
+
+        # MiMo: Capability ceiling check
+        can_add, ceiling_reason = self.capability_ceiling.should_add_agents()
+
+        # MiMo: Cognitive collapse detection
+        collapse = self.cognitive_collapse.detect()
+
+        # MiMo: WAL checkpoint
+        self.wal.write("maintain", status="completed",
+                      payload={"node_count": self.store.get_node_count()})
+
+        # MiMo: Rule expiration audit
+        expired = self.rule_expiration.audit()
         self.zscore.detect()
         self.drift_detector.observe_behavioral(0.5)
         self.cache.delete("old_key")
