@@ -195,6 +195,11 @@ from prometheus_ultra.lifecycle.evaf_consolidation import EVAFConsolidation
 from prometheus_ultra.collaboration.a2a_basic import A2ABasic
 from prometheus_ultra.lifecycle.local_maintenance import LocalMaintenance
 from prometheus_ultra.memory.memory_depth import MemoryDepthTracker
+from prometheus_ultra.evolution.everos import EverOS
+from prometheus_ultra.evolution.gepa import GEPA
+from prometheus_ultra.evolution.memento import Memento
+from prometheus_ultra.evolution.reasoning_bank import ReasoningBank
+from prometheus_ultra.evolution.openspace import OpenSpace
 
 # Lazy import to avoid circular dependency
 TopologicalRetrieval = None
@@ -437,6 +442,13 @@ class Omega:
             self.topological_retrieval = None
         self.local_maintenance = LocalMaintenance()
         self.memory_depth = MemoryDepthTracker()
+
+        # 5 evolution methods from EvoAgentBench
+        self.everos = EverOS()
+        self.gepa = GEPA()
+        self.memento_evolution = Memento()
+        self.reasoning_bank = ReasoningBank()
+        self.openspace = OpenSpace()
 
         # ===== HarnessX: register primitives =====
         self.harness_x.register_primitive(
@@ -1031,6 +1043,18 @@ class Omega:
 
         # Trend: observe fitness trend
         self.trend.observe("fitness", fitness_after)
+
+        # 5 Evolution Methods from EvoAgentBench
+        # EverOS: search-oriented external memory evolution
+        everos_result = self.everos.evolve(context or "auto", context={"fitness": fitness_after})
+        # GEPA: gradient-guided parameter evolution
+        gepa_result = self.gepa.evolve(context or "auto")
+        # Memento: memory-driven method evolution
+        memento_result = self.memento_evolution.evolve(context or "auto", current_method="default", success=True)
+        # ReasoningBank: reasoning strategy retrieval
+        rb_result = self.reasoning_bank.evolve(context or "auto", context={"type": "general"})
+        # OpenSpace: open-space exploration
+        os_result = self.openspace.evolve(context or "auto", current_fitness=fitness_after)
 
         # === Evolve: full mechanism activation ===
         # Safety mechanisms
