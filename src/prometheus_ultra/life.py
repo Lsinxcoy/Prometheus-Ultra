@@ -170,6 +170,17 @@ from prometheus_ultra.loop.loop_selector import LoopSelector, LoopStrategy, Task
 from prometheus_ultra.harness.adaptive_harness import AdaptiveHarness, ToolPolicy
 from prometheus_ultra.prompt.evolving_prompt import EvolvingPrompt
 
+# MiMo-derived mechanisms
+from prometheus_ultra.safety.five_gate_chain import FiveGateMemoryChain
+from prometheus_ultra.safety.oep_defense import OEPDefense
+from prometheus_ultra.harness.progressive_checkpoints import ProgressiveCheckpoints
+from prometheus_ultra.evolution.evolution_quality_gates import EvolutionQualityGates
+from prometheus_ultra.memory.utility_decay import UtilityDecay
+from prometheus_ultra.safety.tool_drift import ToolDriftDetector
+from prometheus_ultra.learning.deep_retrofit_6 import DeepRetrofit6
+from prometheus_ultra.monitor.heartbeat_4cycle import Heartbeat4Cycle
+from prometheus_ultra.harness.three_layer_compression import ThreeLayerCompression
+
 # HarnessX
 from prometheus_ultra.evaluation.harness import HarnessX, HarnessPrimitive
 
@@ -367,6 +378,17 @@ class Omega:
         # ===== Prompt Engineering =====
         self.evolving_prompt = EvolvingPrompt()
 
+        # ===== MiMo-derived mechanisms =====
+        self.five_gate_chain = FiveGateMemoryChain()
+        self.oep_defense = OEPDefense()
+        self.progressive_checkpoints = ProgressiveCheckpoints()
+        self.evo_quality_gates = EvolutionQualityGates()
+        self.utility_decay = UtilityDecay()
+        self.tool_drift = ToolDriftDetector()
+        self.deep_retrofit_6 = DeepRetrofit6()
+        self.heartbeat_4cycle = Heartbeat4Cycle()
+        self.three_layer_compression = ThreeLayerCompression()
+
         # ===== HarnessX: register primitives =====
         self.harness_x.register_primitive(
             HarnessPrimitive(name="input_guard", type="prompt", content="Check input safety")
@@ -404,6 +426,23 @@ class Omega:
         gr = self.input_guardrail.check(content)
         if not gr.passed:
             self.failure_log.log("remember", "input_guardrail_blocked", {"reason": gr.reason})
+            return ""
+
+        # Gate 0.5: Five-Gate Memory Chain (MiMo #20)
+        chain_results = self.five_gate_chain.check_all(
+            content, utility=utility, novelty=surprise,
+            trust_score=0.8, delta=0.1, drift_score=0.05, risk_level=0.2,
+        )
+        if not all(r.passed for r in chain_results):
+            self.failure_log.log("remember", "five_gate_chain_blocked",
+                               {"gate": chain_results[-1].gate_name})
+            return ""
+
+        # Gate 0.7: OEP Defense (MiMo #19)
+        oep_alert = self.oep_defense.check(content, source="user_input",
+                                           transferable=True, similar_count=0)
+        if oep_alert.severity == "critical":
+            self.failure_log.log("remember", "oep_blocked", {"severity": oep_alert.severity})
             return ""
 
         # Gate 1: DopamineWriteGate
@@ -776,6 +815,11 @@ class Omega:
         loop_config = self.loop_selector.select(context)
         self.loop_selector.record_outcome(loop_config.strategy, 0.5)
 
+        # EvolutionQualityGates: check step budget
+        allowed, reason = self.evo_quality_gates.check_step("evolve", 1, max_steps=loop_config.max_steps)
+        if not allowed:
+            return EvolutionOutcome(result=EvolutionResult.BLOCKED, details=reason)
+
         # AdaptiveHarness: record execution
         self.adaptive_harness.execute(context, tool="evolve")
 
@@ -915,9 +959,10 @@ class Omega:
         _ = self.anti_evolution.check_compat(hypothesis=context or "auto-evolution")
 
         # ToolOverload: record tool usage during evolution
-        self.tool_overload.register_tool("evolve_tool")
         self.tool_overload.record_selection("evolve", success=True)
-        self.tool_overload.unregister_tool("evolve_tool")
+
+        # ToolDrift: record tool usage for drift detection
+        self.tool_drift.record_tool_use("evolve")
 
         # CircuitBreaker: record success
         self.circuit_breaker.record_success()
@@ -1373,7 +1418,6 @@ class Omega:
         self.circuit_breaker.record_success()
         self.self_healing.heal({"bank_count": self.bank.count()})
         self.mars.update_belief("dream_belief", 0.6)
-        # delete_belief preserves belief history, only delete test beliefs
         self.mars.create_belief("temp_belief", "temporary", 0.1)
         self.mars.delete_belief("temp_belief")
         self.crash_recovery.create_checkpoint()
@@ -1382,6 +1426,27 @@ class Omega:
         self.organ_pipeline.execute({"action": "maintain"})
         self.hands.execute({"action": "maintain"})
 
+        # MiMo: Utility Decay — apply decay rules
+        self.utility_decay.apply_decay(days_elapsed=1)
+
+        # MiMo: Progressive Checkpoints — check context pressure
+        node_count = self.store.get_node_count()
+        context_usage = min(1.0, node_count / 10000)
+        cp_level = self.progressive_checkpoints.should_save(context_usage)
+        if cp_level:
+            self.progressive_checkpoints.save_checkpoint(cp_level, context_usage,
+                {"node_count": node_count, "edge_count": self.store.get_edge_count()})
+
+        # MiMo: Tool Drift Detection
+        recent_tools = self.trajectory.get_action_summary()
+        if recent_tools:
+            tool_counts = {k: v.get("count", 0) for k, v in recent_tools.items()}
+            if not self.tool_drift._baseline:
+                self.tool_drift.record_baseline(tool_counts)
+            else:
+                self.tool_drift.record_current(tool_counts)
+
+        # MiMo: Three-Layer Compression
         nodes = self.store.get_active_nodes(limit=20)
         for n in nodes:
             self.forgetting.compute_retention_compat(n.id, age=1.0)
