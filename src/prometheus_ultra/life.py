@@ -1175,6 +1175,10 @@ class Omega:
         if self.curiosity_queue._queue and len(self.curiosity_queue._queue) < 3:
             self.curiosity_autofill.auto_fill(count=2)
 
+        # DeepRetrofit6: trigger deep learning when knowledge is acquired
+        if len(new_nodes) > 0:
+            self.deep_retrofit_6.execute(topic=query, source_file="%s://%s" % (source, query))
+
         return {"source": source, "query": query, "total_results": len(new_nodes),
                 "new_nodes": len(new_nodes), "applied_changes": len(applied_changes)}
 
@@ -1523,6 +1527,14 @@ class Omega:
 
         # MiMo: Rule expiration audit
         expired = self.rule_expiration.audit()
+
+        # MiMo: FileChecksum — verify core file integrity
+        checksum_results = self.file_checksum.verify_all()
+
+        # MiMo: ThreeLayerCompression — compress maintain report
+        report_text = "Maintain completed: %d nodes, %d edges, %d expired rules" % (
+            self.store.get_node_count(), self.store.get_edge_count(), len(expired))
+        compressed = self.three_layer_compression.compress(report_text)
         self.zscore.detect()
         self.drift_detector.observe_behavioral(0.5)
         self.cache.delete("old_key")
