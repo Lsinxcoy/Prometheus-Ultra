@@ -200,6 +200,8 @@ from prometheus_ultra.evolution.gepa import GEPA
 from prometheus_ultra.evolution.memento import Memento
 from prometheus_ultra.evolution.reasoning_bank import ReasoningBank
 from prometheus_ultra.evolution.openspace import OpenSpace
+from prometheus_ultra.harness.state_persistence import StatePersistence
+from prometheus_ultra.evaluation.memory_data_adapter import MemoryDataAdapter
 
 # Lazy import to avoid circular dependency
 TopologicalRetrieval = None
@@ -449,6 +451,11 @@ class Omega:
         self.memento_evolution = Memento()
         self.reasoning_bank = ReasoningBank()
         self.openspace = OpenSpace()
+
+        # State persistence & MemoryData
+        self.state_persistence = StatePersistence()
+        self.memory_data_adapter = MemoryDataAdapter(self)
+        self.state_persistence.load(self)
 
         # ===== HarnessX: register primitives =====
         self.harness_x.register_primitive(
@@ -1586,6 +1593,9 @@ class Omega:
         # MiMo: WAL checkpoint
         self.wal.write("maintain", status="completed",
                       payload={"node_count": self.store.get_node_count()})
+
+        # State persistence: save memory state
+        self.state_persistence.save(self)
 
         # MiMo: Rule expiration audit
         expired = self.rule_expiration.audit()
