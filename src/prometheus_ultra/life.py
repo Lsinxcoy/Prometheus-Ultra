@@ -190,6 +190,14 @@ from prometheus_ultra.harness.sub_agent_contract import SubAgentContract
 from prometheus_ultra.safety.rule_expiration import RuleExpirationAudit
 from prometheus_ultra.safety.capability_ceiling import CapabilityCeiling
 from prometheus_ultra.safety.cognitive_collapse import CognitiveCollapse
+from prometheus_ultra.loop.semantic_early_stopping import SemanticEarlyStopping
+from prometheus_ultra.lifecycle.evaf_consolidation import EVAFConsolidation
+from prometheus_ultra.collaboration.a2a_basic import A2ABasic
+from prometheus_ultra.lifecycle.local_maintenance import LocalMaintenance
+from prometheus_ultra.memory.memory_depth import MemoryDepthTracker
+
+# Lazy import to avoid circular dependency
+TopologicalRetrieval = None
 
 # HarnessX
 from prometheus_ultra.evaluation.harness import HarnessX, HarnessPrimitive
@@ -417,6 +425,19 @@ class Omega:
         self.capability_ceiling = CapabilityCeiling()
         self.cognitive_collapse = CognitiveCollapse()
 
+        # A+B+C enhancements
+        self.semantic_early_stopping = SemanticEarlyStopping(patience=3, threshold=0.01)
+        self.evaf_consolidation = EVAFConsolidation()
+        self.a2a_basic = A2ABasic()
+        # Lazy import for topological retrieval
+        try:
+            from prometheus_ultra.memory.topological_retrieval import TopologicalRetrieval as _TR
+            self.topological_retrieval = _TR()
+        except ImportError:
+            self.topological_retrieval = None
+        self.local_maintenance = LocalMaintenance()
+        self.memory_depth = MemoryDepthTracker()
+
         # ===== HarnessX: register primitives =====
         self.harness_x.register_primitive(
             HarnessPrimitive(name="input_guard", type="prompt", content="Check input safety")
@@ -485,6 +506,11 @@ class Omega:
         # Create node
         node = Node(id=generate_uuidv7(), type=NodeType.FACT, content=content,
                      tags=tags, utility=utility, surprise=surprise, branch=branch)
+
+        # EVAF: surprise-valence consolidation check
+        evaf_result = self.evaf_consolidation.evaluate(node.id, surprise, utility)
+        if evaf_result.should_consolidate:
+            self.memory_depth.record_consolidation(node.id)
 
         # Gate 2: FiveGates
         cascade = self.five_gates.evaluate(node, {"current_node_count": self.store.get_node_count()})
@@ -864,6 +890,11 @@ class Omega:
         loop_state = self.loop_guard.check()
         if loop_state in (LoopState.CIRCUIT_BREAKER,):
             return EvolutionOutcome(result=EvolutionResult.BLOCKED, details="LoopGuard")
+
+        # Semantic Early-Stopping check
+        ses_decision = self.semantic_early_stopping.check(context)
+        if ses_decision.should_stop:
+            return EvolutionOutcome(result=EvolutionResult.BLOCKED, details="semantic_early_stop")
 
         # Step 1: EquilibriumGuard
         if self.equilibrium.get_alert_level() == AlertLevel.RED:
@@ -1511,6 +1542,13 @@ class Omega:
             self.forgetting.compute_retention_compat(n.id, age=1.0)
             self.gravity.add_node(n.id, mass=n.utility)
             self.zscore.observe(n.utility)
+            # LocalMaintenance: per-node maintenance
+            actions = self.local_maintenance.check_node(n.id, n.utility, 1.0, 0)
+            for action in actions:
+                if action.action == "prune":
+                    self.store.delete_node(n.id)
+            # MemoryDepth: track access
+            self.memory_depth.record_access(n.id)
 
         # MiMo: Heartbeat 4-cycle
         self.heartbeat_4cycle.run_cycles()
