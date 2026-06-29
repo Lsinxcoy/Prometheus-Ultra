@@ -180,6 +180,7 @@ from prometheus_ultra.safety.tool_drift import ToolDriftDetector
 from prometheus_ultra.learning.deep_retrofit_6 import DeepRetrofit6
 from prometheus_ultra.monitor.heartbeat_4cycle import Heartbeat4Cycle
 from prometheus_ultra.harness.three_layer_compression import ThreeLayerCompression
+from prometheus_ultra.learning.knowledge_to_mechanism import KnowledgeToMechanism
 
 # HarnessX
 from prometheus_ultra.evaluation.harness import HarnessX, HarnessPrimitive
@@ -388,6 +389,7 @@ class Omega:
         self.deep_retrofit_6 = DeepRetrofit6()
         self.heartbeat_4cycle = Heartbeat4Cycle()
         self.three_layer_compression = ThreeLayerCompression()
+        self.knowledge_to_mechanism = KnowledgeToMechanism()
 
         # ===== HarnessX: register primitives =====
         self.harness_x.register_primitive(
@@ -1121,7 +1123,17 @@ class Omega:
         # Event bus
         _ = self.event_bus.get_recent(3)
 
-        return {"source": source, "query": query, "total_results": len(new_nodes), "new_nodes": len(new_nodes)}
+        # Knowledge-to-Mechanism: check if knowledge can update parameters
+        applied_changes = []
+        for r in results:
+            mappings = self.knowledge_to_mechanism.analyze_knowledge(
+                "%s %s" % (r.title, r.content), tags=r.tags)
+            for mapping in mappings:
+                if self.knowledge_to_mechanism.apply_mapping(mapping, self):
+                    applied_changes.append(mapping)
+
+        return {"source": source, "query": query, "total_results": len(new_nodes),
+                "new_nodes": len(new_nodes), "applied_changes": len(applied_changes)}
 
     # ============================================================
     # reflect pipeline
