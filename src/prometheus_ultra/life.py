@@ -165,6 +165,10 @@ from prometheus_ultra.governance.human_oversight import HumanOversight, RiskLeve
 from prometheus_ultra.prompt.structured_output import StructuredOutput, SchemaField
 from prometheus_ultra.prompt.xml_tag import XMLTagPrompting
 from prometheus_ultra.prompt.reasoning_adapter import ReasoningModelAdapter
+from prometheus_ultra.harness.context_engineering import ContextEngineering, ContextComponent
+from prometheus_ultra.loop.loop_selector import LoopSelector, LoopStrategy, TaskComplexity
+from prometheus_ultra.harness.adaptive_harness import AdaptiveHarness, ToolPolicy
+from prometheus_ultra.prompt.evolving_prompt import EvolvingPrompt
 
 # HarnessX
 from prometheus_ultra.evaluation.harness import HarnessX, HarnessPrimitive
@@ -343,6 +347,25 @@ class Omega:
         self.structured_output = StructuredOutput()
         self.xml_tag = XMLTagPrompting()
         self.reasoning_adapter = ReasoningModelAdapter()
+
+        # ===== Context Engineering =====
+        self.context_engineering = ContextEngineering(max_tokens=128000)
+
+        # ===== Loop Engineering =====
+        self.loop_selector = LoopSelector()
+
+        # ===== Harness Engineering =====
+        self.adaptive_harness = AdaptiveHarness()
+        self.adaptive_harness.register_tool(ToolPolicy(tool_name="remember", allowed=True))
+        self.adaptive_harness.register_tool(ToolPolicy(tool_name="recall", allowed=True))
+        self.adaptive_harness.register_tool(ToolPolicy(tool_name="evolve", allowed=True))
+        self.adaptive_harness.register_tool(ToolPolicy(tool_name="learn", allowed=True))
+        self.adaptive_harness.register_tool(ToolPolicy(tool_name="reflect", allowed=True))
+        self.adaptive_harness.register_tool(ToolPolicy(tool_name="dream", allowed=True))
+        self.adaptive_harness.register_tool(ToolPolicy(tool_name="maintain", allowed=True))
+
+        # ===== Prompt Engineering =====
+        self.evolving_prompt = EvolvingPrompt()
 
         # ===== HarnessX: register primitives =====
         self.harness_x.register_primitive(
@@ -651,6 +674,34 @@ class Omega:
             if h.node_id:
                 self.gravity.add_node(h.node_id, mass=h.score)
 
+        # === Context Engineering: Write/Select/Compress ===
+        # Write: snapshot recall results for future retrieval
+        recall_components = [
+            ContextComponent(name="query", type="instruction", content=query, priority=1,
+                           tokens=len(query.split()) * 2),
+        ]
+        for h in unique[:5]:
+            recall_components.append(ContextComponent(
+                name="result_%s" % h.node_id[:8], type="knowledge",
+                content=h.content, priority=3, tokens=len(h.content.split()) * 2,
+            ))
+        self.context_engineering.write(query, recall_components)
+
+        # Select: retrieve relevant context from memory
+        selected = self.context_engineering.select(query, self.store, limit=3)
+        if selected:
+            unique.extend([SearchHit(node_id=c.name, score=0.5, content=c.content)
+                          for c in selected[:2]])
+
+        # Compress: ensure context fits within budget
+        if len(unique) > limit:
+            compressed = self.context_engineering.compress(
+                [ContextComponent(name=h.node_id, type="knowledge", content=h.content,
+                                 tokens=len(h.content.split()) * 2) for h in unique],
+                target_ratio=0.7,
+            )
+            unique = unique[:len(compressed)]
+
         # === Recall: full mechanism activation ===
         # Cache subsystem
         _ = self.cache.contains(query)
@@ -721,6 +772,13 @@ class Omega:
     def evolve(self, context: str = "", branch: str = "main") -> EvolutionOutcome:
         start = time.time()
 
+        # LoopSelector: auto-select loop strategy
+        loop_config = self.loop_selector.select(context)
+        self.loop_selector.record_outcome(loop_config.strategy, 0.5)
+
+        # AdaptiveHarness: record execution
+        self.adaptive_harness.execute(context, tool="evolve")
+
         # Step -1: ToolOverload check
         overload = self.tool_overload.detect()
         if overload.is_overloaded:
@@ -785,7 +843,13 @@ class Omega:
             )
             self.marginal.record(harness_score, "harness_evolution", context)
 
-        # Step 6: Execute evolution
+        # Step 6: Context Engineering — manage evolve context
+        self.context_engineering.write("evolve_%s" % context, [
+            ContextComponent(name="task", type="instruction", content=context, priority=1,
+                           tokens=len(context.split()) * 2),
+        ])
+
+        # Step 7: Execute evolution
         fitness_before = self._compute_fitness()
 
         # CoEvolution
@@ -940,6 +1004,13 @@ class Omega:
     # learn pipeline
     # ============================================================
     def learn(self, source: str = "web", query: str = "AI", max_results: int = 5) -> dict:
+        # EvolvingPrompt: generate optimized prompt
+        prompt = self.evolving_prompt.generate_prompt(
+            "Learn about %s from %s" % (query, source),
+            context="Knowledge acquisition task",
+            task_type="explanation",
+        )
+
         # Step 1: KnowledgeScanner
         scan_source = ScanSource(source) if source in [s.value for s in ScanSource] else ScanSource.WEB
         results = self.knowledge_scanner.scan(scan_source, query, max_results, force=True)
@@ -1011,10 +1082,28 @@ class Omega:
     # reflect pipeline
     # ============================================================
     def reflect(self) -> dict:
+        # AdaptiveHarness: check harness state
+        harness_state = self.adaptive_harness.get_state()
+
+        # LoopSelector: record reflection outcome
+        self.loop_selector.record_outcome(LoopStrategy.REFLEXION, 0.8)
+
         # ThinkTool: structured thinking before reflection
         think_result = self.think_tool.run(
             task="Reflect on system performance and identify improvements",
             context=f"health={self._compute_health()}, nodes={self.store.get_node_count()}",
+        )
+
+        # ContextEngineering: isolate reflection context
+        reflect_components = [
+            ContextComponent(name="task", type="instruction",
+                           content="Reflect on system performance", priority=1, tokens=20),
+            ContextComponent(name="health", type="knowledge",
+                           content="health=%s, nodes=%d" % (self._compute_health(), self.store.get_node_count()),
+                           priority=2, tokens=20),
+        ]
+        isolated, remaining = self.context_engineering.isolate(
+            reflect_components, "reflection analysis", max_tokens=8000
         )
 
         fv = self.five_view.evaluate(
