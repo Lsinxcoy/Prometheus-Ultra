@@ -3,19 +3,21 @@
 Based on: MiMo Daily Learning System #2.3 (知识扫描)
 
 Data sources from MiMo:
-    - arXiv (AI/ML papers)
-    - Hacker News (technical community)
-    - GitHub Trending (open source projects)
-    - Interconnects (AI newsletter)
-    - The Decoder (AI news)
-    - Anthropic/OpenAI engineering blogs
-    - Industry reports (Databricks, Google DeepMind)
+    - arXiv (AI/ML papers) — real API via export.arxiv.org
+    - Hacker News (technical community) — real API via hacker-news.firebaseio.com
+    - GitHub Trending (open source projects) — real API via api.github.com
+    - Wikipedia (reference knowledge) — real API via en.wikipedia.org
 
 Each source has a specific scan pattern and result format.
 """
 from __future__ import annotations
 
+import json
+import re
 import time
+import urllib.request
+import urllib.parse
+import urllib.error
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -65,25 +67,32 @@ SOURCE_CONFIG = {
         "topics": ["agent", "llm", "memory", "rag"],
         "freshness_days": 7,
     },
-    ScanSource.NEWSLETTER: {
-        "name": "AI Newsletter",
-        "url_pattern": "{url}",
-        "topics": ["AI", "agent", "safety"],
-        "freshness_days": 7,
-    },
-    ScanSource.BLOG: {
-        "name": "Engineering Blog",
-        "url_pattern": "{url}",
-        "topics": ["agent", "harness", "prompt"],
-        "freshness_days": 30,
-    },
-    ScanSource.REPORT: {
-        "name": "Industry Report",
-        "url_pattern": "{url}",
-        "topics": ["benchmark", "evaluation", "safety"],
-        "freshness_days": 90,
+    ScanSource.WIKI: {
+        "name": "Wikipedia",
+        "url_pattern": "https://en.wikipedia.org/wiki/{title}",
+        "topics": [],
+        "freshness_days": 365,
     },
 }
+
+_TIMEOUT = 8  # seconds
+
+
+def _http_get(url: str, headers: dict | None = None) -> str | None:
+    """Fetch URL with timeout and error handling."""
+    req = urllib.request.Request(url, headers=headers or {"User-Agent": "PrometheusUltra/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
+        return None
+
+
+def _parse_json(text: str) -> dict | list | None:
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
 
 
 class KnowledgeScanner:
@@ -119,16 +128,16 @@ class KnowledgeScanner:
             results = self._scan_hackernews(query, max_results)
         elif source == ScanSource.GITHUB:
             results = self._scan_github(query, max_results)
-        elif source == ScanSource.NEWSLETTER:
-            results = self._scan_newsletter(query, max_results)
-        elif source == ScanSource.BLOG:
-            results = self._scan_blog(query, max_results)
-        elif source == ScanSource.REPORT:
-            results = self._scan_report(query, max_results)
-        elif source == ScanSource.WEB:
-            results = self._scan_web(query, max_results)
         elif source == ScanSource.WIKI:
             results = self._scan_wiki(query, max_results)
+        elif source == ScanSource.WEB:
+            results = self._scan_web(query, max_results)
+        elif source == ScanSource.NEWSLETTER:
+            results = self._scan_hackernews(query, max_results)
+        elif source == ScanSource.BLOG:
+            results = self._scan_github(query, max_results)
+        elif source == ScanSource.REPORT:
+            results = self._scan_arxiv(query, max_results)
         elif source == ScanSource.LOCAL:
             results = self._scan_local(query, max_results)
 
@@ -142,130 +151,216 @@ class KnowledgeScanner:
         return results
 
     def _scan_arxiv(self, query: str, max_results: int) -> list[ScanResult]:
-        keywords = query.lower().split()
+        """Scan arXiv via the Atom API (export.arxiv.org)."""
+        params = urllib.parse.urlencode({
+            "search_query": f"all:{query}",
+            "start": 0,
+            "max_results": min(max_results, 20),
+            "sortBy": "submittedDate",
+            "sortOrder": "descending",
+        })
+        url = f"http://export.arxiv.org/api/query?{params}"
+        xml_text = _http_get(url)
+        if not xml_text:
+            return [ScanResult(
+                title=f"arXiv: {query}",
+                content=f"arXiv papers on {query} (offline fallback).",
+                source="arxiv", tags=query.lower().split()[:3], score=0.5,
+                url="https://arxiv.org/", timestamp=time.time(), source_type="paper",
+            )]
+
         results = []
-        templates = [
-            "arXiv:%s - %s: novel approach with state-of-the-art results",
-            "arXiv:%s - %s: comprehensive survey and analysis",
-            "arXiv:%s - %s: empirical evaluation on standard benchmarks",
-        ]
-        for i in range(min(max_results, len(templates))):
+        entries = xml_text.split("<entry>")[1:]
+        for entry in entries[:max_results]:
+            title = _xml_tag(entry, "title").strip().replace("\n", " ")
+            summary = _xml_tag(entry, "summary").strip().replace("\n", " ")
+            arxiv_id = _xml_tag(entry, "id").strip()
+            if not title or not arxiv_id:
+                continue
+            if arxiv_id.startswith("http"):
+                arxiv_id = arxiv_id.split("/abs/")[-1]
+
+            tags = []
+            for cat in entry.split("<category"):
+                if 'term="' in cat:
+                    tag = cat.split('term="')[1].split('"')[0]
+                    tags.append(tag)
+
             results.append(ScanResult(
-                title=templates[i] % (f"2606.{10000+i}", query),
-                content="This paper presents a novel approach to %s with empirical evaluation. "
-                        "Key findings include performance improvements of 15-30%% over baselines." % query,
-                source="arxiv", tags=keywords[:3], score=max(0.4, 0.9 - i * 0.05),
-                url="https://arxiv.org/abs/2606.%d" % (10000 + i),
-                timestamp=time.time(), source_type="paper",
+                title=title[:200],
+                content=summary[:500],
+                source="arxiv",
+                tags=tags[:5],
+                score=min(1.0, 0.6 + len(summary) / 2000),
+                url=f"https://arxiv.org/abs/{arxiv_id}",
+                timestamp=time.time(),
+                source_type="paper",
             ))
         return results
 
     def _scan_hackernews(self, query: str, max_results: int) -> list[ScanResult]:
-        keywords = query.lower().split()
+        """Scan Hacker News via Firebase API."""
+        query_lower = query.lower()
         results = []
-        for i in range(min(max_results, 3)):
-            results.append(ScanResult(
-                title="HN: Discussion on %s - community insights" % query,
-                content="Technical discussion about %s with community feedback. "
-                        "Key insights from practitioners on real-world applications." % query,
-                source="hackernews", tags=keywords[:3], score=0.6,
-                url="https://news.ycombinator.com/item?id=%d" % (40000000 + i),
-                timestamp=time.time(), source_type="discussion",
-            ))
+
+        ids_text = _http_get("https://hacker-news.firebaseio.com/v0/topstories.json")
+        if not ids_text:
+            return [ScanResult(
+                title=f"HN: {query}",
+                content=f"Hacker News discussions on {query} (offline fallback).",
+                source="hackernews", tags=query.lower().split()[:3], score=0.5,
+                url="https://news.ycombinator.com/", timestamp=time.time(), source_type="discussion",
+            )]
+        story_ids = _parse_json(ids_text)
+        if not story_ids or not isinstance(story_ids, list):
+            return []
+
+        checked = 0
+        for sid in story_ids[:60]:
+            if checked >= max_results * 3 or len(results) >= max_results:
+                break
+            checked += 1
+            item_text = _http_get(f"https://hacker-news.firebaseio.com/v0/item/{sid}.json")
+            if not item_text:
+                continue
+            item = _parse_json(item_text)
+            if not item or item.get("type") != "story":
+                continue
+            title = (item.get("title") or "").lower()
+            if any(kw in title for kw in query_lower.split()):
+                results.append(ScanResult(
+                    title=item.get("title", ""),
+                    content=item.get("text", "")[:300] or item.get("title", ""),
+                    source="hackernews",
+                    tags=query_lower.split()[:3],
+                    score=min(1.0, 0.5 + item.get("score", 0) / 200),
+                    url=f"https://news.ycombinator.com/item?id={sid}",
+                    timestamp=item.get("time", time.time()),
+                    source_type="discussion",
+                ))
+
+        if not results:
+            results = [ScanResult(
+                title=f"HN: {query}",
+                content=f"Hacker News: no trending stories matched '{query}' (fallback).",
+                source="hackernews", tags=query_lower.split()[:3], score=0.4,
+                url="https://news.ycombinator.com/", timestamp=time.time(), source_type="discussion",
+            )]
         return results
 
     def _scan_github(self, query: str, max_results: int) -> list[ScanResult]:
-        keywords = query.lower().split()
-        results = []
-        for i in range(min(max_results, 3)):
-            results.append(ScanResult(
-                title="GitHub Trending: %s framework %d" % (query, i+1),
-                content="Open source project for %s with %d stars. "
-                        "Implements novel architecture for agent systems." % (query, (i+1)*500),
-                source="github", tags=keywords[:3], score=0.5,
-                url="https://github.com/trending?q=%s" % query.replace(" ", "+"),
-                timestamp=time.time(), source_type="project",
-            ))
-        return results
+        """Scan GitHub via Search API."""
+        params = urllib.parse.urlencode({"q": query, "sort": "stars", "order": "desc", "per_page": min(max_results, 10)})
+        url = f"https://api.github.com/search/repositories?{params}"
+        text = _http_get(url, headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "PrometheusUltra/1.0"})
+        if not text:
+            return [ScanResult(
+                title=f"GitHub: {query}",
+                content=f"GitHub projects related to {query} (offline fallback).",
+                source="github", tags=query.lower().split()[:3] + ["github"], score=0.5,
+                url="https://github.com/", timestamp=time.time(), source_type="project",
+            )]
+        data = _parse_json(text)
+        if not data or "items" not in data or not data["items"]:
+            return [ScanResult(
+                title=f"GitHub: {query}",
+                content=f"GitHub projects related to {query} (offline fallback).",
+                source="github", tags=query.lower().split()[:3] + ["github"], score=0.5,
+                url="https://github.com/", timestamp=time.time(), source_type="project",
+            )]
 
-    def _scan_newsletter(self, query: str, max_results: int) -> list[ScanResult]:
-        keywords = query.lower().split()
         results = []
-        for i in range(min(max_results, 2)):
+        for repo in data["items"][:max_results]:
             results.append(ScanResult(
-                title="AI Newsletter: Weekly %s update #%d" % (query, i+1),
-                content="This week in %s: new papers, industry developments, "
-                        "and community highlights." % query,
-                source="newsletter", tags=keywords[:3], score=0.65,
-                url="https://interconnects.ai/", timestamp=time.time(),
-                source_type="newsletter",
-            ))
-        return results
-
-    def _scan_blog(self, query: str, max_results: int) -> list[ScanResult]:
-        keywords = query.lower().split()
-        results = []
-        blogs = [
-            ("Anthropic Engineering", "https://www.anthropic.com/engineering/"),
-            ("OpenAI Blog", "https://openai.com/blog/"),
-            ("LangChain Blog", "https://www.langchain.com/blog/"),
-        ]
-        for i, (name, url) in enumerate(blogs[:max_results]):
-            results.append(ScanResult(
-                title="%s: %s insights" % (name, query),
-                content="Engineering insights from %s on %s. "
-                        "Practical lessons from production deployments." % (name, query),
-                source="blog", tags=keywords[:3], score=0.7,
-                url=url, timestamp=time.time(), source_type="blog",
-            ))
-        return results
-
-    def _scan_report(self, query: str, max_results: int) -> list[ScanResult]:
-        keywords = query.lower().split()
-        results = []
-        for i in range(min(max_results, 2)):
-            results.append(ScanResult(
-                title="Industry Report: %s analysis 2026" % query,
-                content="Comprehensive analysis of %s trends, benchmarks, "
-                        "and market outlook for 2026." % query,
-                source="report", tags=keywords[:3], score=0.75,
-                url="https://example.com/report", timestamp=time.time(),
-                source_type="report",
-            ))
-        return results
-
-    def _scan_web(self, query: str, max_results: int) -> list[ScanResult]:
-        keywords = query.lower().split()
-        results = []
-        for i in range(min(max_results, 3)):
-            results.append(ScanResult(
-                title="Web: %s insight %d" % (query, i+1),
-                content="Knowledge about %s from web sources. "
-                        "Comprehensive overview with practical applications." % query,
-                source="web", tags=keywords[:3], score=0.5 + i * 0.05,
-                timestamp=time.time(), source_type="web",
+                title=f"{repo['full_name']}: {repo.get('description', '')[:100]}",
+                content=f"Language: {repo.get('language', 'N/A')}. "
+                        f"Stars: {repo.get('stargazers_count', 0)}. "
+                        f"Forks: {repo.get('forks_count', 0)}. "
+                        f"{repo.get('description', '')}",
+                source="github",
+                tags=[repo.get("language", ""), "github", "open-source"],
+                score=min(1.0, 0.4 + repo.get("stargazers_count", 0) / 5000),
+                url=repo.get("html_url", ""),
+                timestamp=time.time(),
+                source_type="project",
             ))
         return results
 
     def _scan_wiki(self, query: str, max_results: int) -> list[ScanResult]:
-        keywords = query.lower().split()
-        return [ScanResult(
-            title="%s - Encyclopedia" % query.title(),
-            content="%s is a field of study with theoretical foundations "
-                    "and practical applications." % query.title(),
-            source="wiki", tags=keywords[:3] + ["reference"], score=0.7,
-            timestamp=time.time(), source_type="reference",
-        )]
+        """Scan Wikipedia via MediaWiki API."""
+        params = urllib.parse.urlencode({"action": "query", "list": "search", "srsearch": query,
+                                         "srlimit": min(max_results, 5), "format": "json"})
+        url = f"https://en.wikipedia.org/w/api.php?{params}"
+        text = _http_get(url)
+        if not text:
+            return [ScanResult(
+                title=f"Wikipedia: {query.title()}",
+                content=f"Wikipedia reference for {query} (offline fallback).",
+                source="wiki", tags=query.lower().split()[:3] + ["wikipedia"], score=0.6,
+                url=f"https://en.wikipedia.org/wiki/{urllib.parse.quote(query)}",
+                timestamp=time.time(), source_type="reference",
+            )]
+        data = _parse_json(text)
+        if not data or "query" not in data or not data["query"].get("search"):
+            return [ScanResult(
+                title=f"Wikipedia: {query.title()}",
+                content=f"Wikipedia reference for {query} (offline fallback).",
+                source="wiki", tags=query.lower().split()[:3] + ["wikipedia"], score=0.6,
+                url=f"https://en.wikipedia.org/wiki/{urllib.parse.quote(query)}",
+                timestamp=time.time(), source_type="reference",
+            )]
+
+        results = []
+        for item in data["query"].get("search", []):
+            snippet = re.sub(r"<[^>]+>", "", item.get("snippet", ""))
+            results.append(ScanResult(
+                title=item.get("title", ""),
+                content=snippet,
+                source="wiki",
+                tags=[query.split()[0] if query else "", "wikipedia", "reference"],
+                score=0.7,
+                url=f"https://en.wikipedia.org/wiki/{urllib.parse.quote(item.get('title', ''))}",
+                timestamp=time.time(),
+                source_type="reference",
+            ))
+        return results
+
+    def _scan_web(self, query: str, max_results: int) -> list[ScanResult]:
+        """Scan web via Wikipedia with offline fallback."""
+        results = self._scan_wiki(query, max_results)
+        if not results:
+            results = [ScanResult(
+                title=f"Knowledge about {query}",
+                content=f"Reference information related to {query}.",
+                source="web", tags=query.lower().split()[:3], score=0.5,
+                timestamp=time.time(), source_type="reference",
+            )]
+        return results
 
     def _scan_local(self, query: str, max_results: int) -> list[ScanResult]:
-        keywords = query.lower().split()
         return [ScanResult(
-            title="Local knowledge: %s" % query,
-            content="Local documentation related to %s." % query,
-            source="local", tags=keywords[:3] + ["internal"], score=0.6,
+            title=f"Local knowledge: {query}",
+            content=f"Local documentation related to {query}.",
+            source="local", tags=query.lower().split()[:3] + ["internal"], score=0.6,
             timestamp=time.time(), source_type="local",
         )]
 
     def get_stats(self) -> dict:
         return {"scans": len(self._scans), "total_results": self._total_results,
                 "source_distribution": dict(self._source_stats)}
+
+
+def _xml_tag(text: str, tag: str) -> str:
+    """Extract content from an XML tag."""
+    start = text.find(f"<{tag}>")
+    if start == -1:
+        start = text.find(f'<{tag} ')
+        if start == -1:
+            return ""
+        start = text.find(">", start) + 1
+    else:
+        start += len(f"<{tag}>")
+    end = text.find(f"</{tag}>", start)
+    if end == -1:
+        return text[start:start + 500]
+    return text[start:end]

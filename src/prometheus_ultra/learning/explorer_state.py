@@ -18,7 +18,10 @@ class ExplorationRound:
 
 class ExplorerState:
     """Track exploration progress and focus areas."""
-    def __init__(self, path: str = "E:/Prometheus-Ultra/explorer_state.json"):
+    def __init__(self, path: str | None = None):
+        if path is None:
+            path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "explorer_state.json")
+            path = os.path.normpath(path)
         self._path = path
         self._today_rounds: list[dict] = []
         self._domain_counts: dict[str, int] = {}
@@ -36,6 +39,9 @@ class ExplorerState:
             except: pass
 
     def _flush(self):
+        parent = os.path.dirname(self._path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(self._path, 'w') as f:
             json.dump({"today": self._today_rounds[-50:],
                        "domains": self._domain_counts,

@@ -752,12 +752,13 @@ class Omega:
             all_hits.append(SearchHit(node_id=r.node_id, score=r.fused_score,
                                       content=r.content))
 
-        # Deduplicate + sort
+        # Deduplicate + sort (cap scores to [0,1] for cross-route consistency)
         seen = set()
         unique = []
         for h in all_hits:
             if h.node_id not in seen:
                 seen.add(h.node_id)
+                h.score = min(1.0, max(0.0, h.score))
                 unique.append(h)
         unique.sort(key=lambda h: h.score, reverse=True)
         unique = unique[:limit]
@@ -807,6 +808,9 @@ class Omega:
         if selected:
             unique.extend([SearchHit(node_id=c.name, score=0.5, content=c.content)
                           for c in selected[:2]])
+
+        # Re-sort after context engineering additions
+        unique.sort(key=lambda h: h.score, reverse=True)
 
         # Compress: ensure context fits within budget
         if len(unique) > limit:

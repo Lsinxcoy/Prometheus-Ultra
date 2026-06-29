@@ -18,7 +18,10 @@ class WALEntry:
 
 class WriteAheadLog:
     """WAL for crash recovery and session continuity."""
-    def __init__(self, path: str = "E:/Prometheus-Ultra/wal.json"):
+    def __init__(self, path: str | None = None):
+        if path is None:
+            path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "wal.json")
+            path = os.path.normpath(path)
         self._path = path
         self._entries: list[dict] = []
         self._load()
@@ -39,6 +42,9 @@ class WriteAheadLog:
         self._flush()
 
     def _flush(self):
+        parent = os.path.dirname(self._path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(self._path, 'w') as f:
             json.dump(self._entries[-50:], f)
 

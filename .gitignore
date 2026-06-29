@@ -13,3 +13,7 @@ htmlcov/
 .env
 .venv/
 venv/
+wal.json
+explorer_state.json
+omega_state.json
+file_checksums.json

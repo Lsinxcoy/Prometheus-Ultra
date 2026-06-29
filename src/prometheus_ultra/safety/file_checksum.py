@@ -8,7 +8,10 @@ import hashlib, os, json, time
 
 class FileChecksum:
     """Monitor core file integrity via SHA-256 checksums."""
-    def __init__(self, path: str = "E:/Prometheus-Ultra/file_checksums.json"):
+    def __init__(self, path: str | None = None):
+        if path is None:
+            path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "file_checksums.json")
+            path = os.path.normpath(path)
         self._path = path
         self._checksums: dict[str, str] = {}
         self._load()
@@ -21,6 +24,9 @@ class FileChecksum:
             except: self._checksums = {}
 
     def _flush(self):
+        parent = os.path.dirname(self._path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(self._path, 'w') as f:
             json.dump(self._checksums, f, indent=2)
 

@@ -190,16 +190,7 @@ class GraphMemory:
     def search(self, query: str, limit: int = 10) -> list[SearchResult]:
         """Search for episodes matching the query.
 
-        Combines direct matching with BFS graph expansion.
-
-        Args:
-            query: Search query string.
-            limit: Maximum results to return.
-
-        Returns:
-            List of SearchResult objects, sorted by score descending.
-
-        Complexity: O(V + E) where V = matching episodes, E = traversed edges.
+        Uses tag index for O(K) candidate selection instead of O(N) full scan.
         """
         if not query or not query.strip():
             return []
@@ -207,21 +198,32 @@ class GraphMemory:
         query_lower = query.lower()
         query_words = set(query_lower.split())
 
-        # Phase 1: Direct matching
+        # Phase 1: Collect candidates via tag index (O(K) instead of O(N))
+        candidate_ids: set[str] = set()
+        for word in query_words:
+            if word in self._tag_index:
+                candidate_ids.update(self._tag_index[word])
+
+        # Also add most recent episodes for recency bonus
+        all_ids = list(self._episodes.keys())
+        candidate_ids.update(all_ids[-10:])
+
+        # Phase 2: Score only candidates
         direct_matches: dict[str, float] = {}
-        for eid, ep in self._episodes.items():
-            score = self._compute_direct_score(query_lower, query_words, ep)
-            if score > 0:
-                direct_matches[eid] = score
+        for eid in candidate_ids:
+            if eid in self._episodes:
+                ep = self._episodes[eid]
+                score = self._compute_direct_score(query_lower, query_words, ep)
+                if score > 0:
+                    direct_matches[eid] = score
 
         if not direct_matches:
             return []
 
-        # Phase 2: BFS expansion from top matches
+        # Phase 3: BFS expansion from top matches
         results: dict[str, SearchResult] = {}
         visited: set[str] = set()
 
-        # Start BFS from top 3 matches
         start_nodes = sorted(direct_matches.keys(),
                              key=lambda x: direct_matches[x], reverse=True)[:3]
 
@@ -241,7 +243,6 @@ class GraphMemory:
             else:
                 results[eid].score = max(results[eid].score, score)
 
-        # Sort by score and limit
         sorted_results = sorted(results.values(), key=lambda r: r.score, reverse=True)
         return sorted_results[:limit]
 

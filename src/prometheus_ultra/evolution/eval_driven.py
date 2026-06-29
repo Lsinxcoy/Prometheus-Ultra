@@ -1,24 +1,14 @@
-"""EvalDrivenEngine — Iterative evaluation-driven evolution.
+"""EvalDrivenEngine — Population-based evaluation-driven evolution.
 
-Algorithm:
-    Iteratively improve fitness via:
-    fitness = min(1.0, current + learning_rate × (1 - current))
-
-    Converges when fitness >= threshold or max_iterations reached.
-
-    Learning rate controls convergence speed:
-    - High rate (0.1): fast convergence, may overshoot
-    - Low rate (0.01): slow convergence, more stable
-    - Adaptive rate: adjusts based on recent improvements
-
-Edge Cases:
-    - max_iterations = 0: returns initial fitness
-    - threshold > 1: never converges, runs all iterations
-    - All iterations same fitness: returns final fitness
-
-Complexity: O(max_iterations)
+Based on M* (arXiv:2604.11811) evolutionary approach:
+- Maintains a population of candidate solutions
+- Evaluates fitness via tournament selection
+- Applies crossover and Gaussian mutation
+- Tracks convergence via best/avg fitness over generations
 """
 from __future__ import annotations
+import random
+import time
 from dataclasses import dataclass, field
 
 
@@ -36,11 +26,15 @@ class EvolutionEvalResult:
     improved: bool = False
     population_size: int = 0
     best_fitness: float = 0.0
+    avg_fitness: float = 0.0
+    diversity: float = 0.0
     duration_ms: float = 0.0
 
 
 class EvalDrivenEngine:
-    """Evaluation-driven evolution engine.
+    """Population-based evaluation-driven evolution engine.
+
+    Based on M* evolutionary code optimization.
 
     Usage:
         engine = EvalDrivenEngine(max_iterations=10, convergence_threshold=0.95)
@@ -49,45 +43,110 @@ class EvalDrivenEngine:
     """
 
     def __init__(self, max_iterations: int = 10, convergence_threshold: float = 0.95,
-                 learning_rate: float = 0.05, adaptive_lr: bool = False):
+                 population_size: int = 20, mutation_rate: float = 0.15,
+                 crossover_rate: float = 0.7, elite_ratio: float = 0.1):
         self._max_iter = max_iterations
         self._threshold = convergence_threshold
-        self._lr = learning_rate
-        self._adaptive_lr = adaptive_lr
+        self._pop_size = population_size
+        self._mutation_rate = mutation_rate
+        self._crossover_rate = crossover_rate
+        self._elite_count = max(1, int(population_size * elite_ratio))
+        self._gene_size = 10
         self._history: list[EvolutionEvalResult] = []
         self._best_ever = 0.0
         self._fitness_history: list[float] = []
+        self._population: list[list[float]] = []
+        self._generation = 0
+
+    def _init_population(self, seed_fitness: float = 0.5):
+        self._population = [
+            [max(0.0, min(1.0, seed_fitness + random.gauss(0, 0.2))) for _ in range(self._gene_size)]
+            for _ in range(self._pop_size)
+        ]
+
+    def _evaluate_fitness(self, genes: list[float]) -> float:
+        if not genes:
+            return 0.0
+        base = sum(genes) / len(genes)
+        variance = sum((g - base) ** 2 for g in genes) / len(genes)
+        balance = 1.0 - variance
+        return max(0.0, min(1.0, base * 0.8 + balance * 0.2))
+
+    def _tournament_select(self, k: int = 3) -> list[float]:
+        candidates = random.sample(self._population, min(k, len(self._population)))
+        return max(candidates, key=lambda g: self._evaluate_fitness(g))
+
+    def _crossover(self, parent1: list[float], parent2: list[float]) -> list[float]:
+        if random.random() > self._crossover_rate:
+            return list(parent1)
+        point = random.randint(1, len(parent1) - 1)
+        return parent1[:point] + parent2[point:]
+
+    def _mutate(self, genes: list[float]) -> list[float]:
+        return [
+            max(0.0, min(1.0, g + random.gauss(0, self._mutation_rate)))
+            for g in genes
+        ]
 
     def evolve(self, context: EvolutionContext | None = None) -> EvolutionEvalResult:
         start_time = time.time()
-        fitness = 0.5
-        for i in range(self._max_iter):
-            lr = self._compute_lr(i)
-            fitness = min(1.0, fitness + lr * (1 - fitness))
-            self._fitness_history.append(fitness)
 
-            if fitness >= self._threshold:
+        if not self._population:
+            self._init_population()
+
+        for i in range(self._max_iter):
+            fitnesses = [self._evaluate_fitness(g) for g in self._population]
+            avg_fit = sum(fitnesses) / len(fitnesses)
+            best_fit = max(fitnesses)
+
+            self._fitness_history.append(best_fit)
+            self._generation += 1
+
+            if best_fit >= self._threshold:
                 elapsed = (time.time() - start_time) * 1000
-                result = EvolutionEvalResult(iteration=i + 1, fitness=fitness, improved=True,
-                                             best_fitness=fitness, duration_ms=elapsed)
+                result = EvolutionEvalResult(
+                    iteration=i + 1, fitness=best_fit, improved=True,
+                    population_size=len(self._population), best_fitness=best_fit,
+                    avg_fitness=avg_fit, diversity=self._diversity(fitnesses),
+                    duration_ms=elapsed,
+                )
                 self._history.append(result)
-                self._best_ever = max(self._best_ever, fitness)
+                self._best_ever = max(self._best_ever, best_fit)
                 return result
 
+            indexed = list(enumerate(fitnesses))
+            indexed.sort(key=lambda x: x[1], reverse=True)
+            new_pop = [list(self._population[idx]) for idx, _ in indexed[:self._elite_count]]
+
+            while len(new_pop) < self._pop_size:
+                p1 = self._tournament_select()
+                p2 = self._tournament_select()
+                child = self._crossover(p1, p2)
+                child = self._mutate(child)
+                new_pop.append(child)
+
+            self._population = new_pop
+
+        final_fitnesses = [self._evaluate_fitness(g) for g in self._population]
+        best = max(final_fitnesses)
+        avg = sum(final_fitnesses) / len(final_fitnesses)
+
         elapsed = (time.time() - start_time) * 1000
-        result = EvolutionEvalResult(iteration=self._max_iter, fitness=fitness,
-                                     improved=fitness > 0.5, best_fitness=fitness,
-                                     duration_ms=elapsed)
+        result = EvolutionEvalResult(
+            iteration=self._max_iter, fitness=best, improved=best > 0.5,
+            population_size=len(self._population), best_fitness=best,
+            avg_fitness=avg, diversity=self._diversity(final_fitnesses),
+            duration_ms=elapsed,
+        )
         self._history.append(result)
-        self._best_ever = max(self._best_ever, fitness)
+        self._best_ever = max(self._best_ever, best)
         return result
 
-    def _compute_lr(self, iteration: int) -> float:
-        if not self._adaptive_lr:
-            return self._lr
-        # Adaptive: decrease lr as we approach convergence
-        progress = iteration / max(self._max_iter, 1)
-        return self._lr * (1.0 - progress * 0.5)
+    def _diversity(self, fitnesses: list[float]) -> float:
+        if len(fitnesses) < 2:
+            return 0.0
+        mean = sum(fitnesses) / len(fitnesses)
+        return (sum((f - mean) ** 2 for f in fitnesses) / len(fitnesses)) ** 0.5
 
     def evaluate(self, data: dict | None = None) -> dict:
         return {"evaluated": True, "history_len": len(self._history), "best_ever": self._best_ever}
@@ -96,11 +155,13 @@ class EvalDrivenEngine:
         return list(self._fitness_history)
 
     def get_convergence_curve(self) -> list[dict]:
-        return [{"iteration": h.iteration, "fitness": h.fitness} for h in self._history]
+        return [{"iteration": h.iteration, "fitness": h.fitness, "avg": h.avg_fitness} for h in self._history]
 
     def get_stats(self) -> dict:
-        return {"evaluations": len(self._history), "best_ever": self._best_ever,
-                "avg_fitness": sum(self._fitness_history) / max(len(self._fitness_history), 1)}
-
-
-import time
+        return {
+            "evaluations": len(self._history),
+            "best_ever": self._best_ever,
+            "generations": self._generation,
+            "population_size": self._pop_size,
+            "avg_fitness": sum(self._fitness_history) / max(len(self._fitness_history), 1),
+        }

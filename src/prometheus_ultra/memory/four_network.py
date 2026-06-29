@@ -80,69 +80,65 @@ class FourNetworkMemory:
     def recall(self, query: str, top_k: int = 5, network: str | None = None) -> list[dict]:
         """Recall with Generative Agents scoring: recency × importance × relevance.
 
-        From GA paper: "retrieval uses a weighted sum of three components:
-        recency, importance, and relevance"
+        Uses tag index for O(K) candidate selection instead of O(N) full scan.
         """
         results = []
         query_lower = query.lower()
         query_words = set(query_lower.split())
         networks = [network] if network and network in self._networks else self.NETWORK_NAMES
 
-        for net_name in networks:
-            for i, entry in enumerate(self._networks[net_name]):
-                # Relevance score
-                content_lower = entry["content"].lower()
-                relevance = 0.0
-                if query_lower in content_lower:
-                    relevance = 1.0
-                content_words = set(content_lower.split())
-                overlap = query_words & content_words
-                if query_words:
-                    relevance += len(overlap) / len(query_words) * 0.5
-
-                # Network-specific bonus
-                net_keywords = self.NETWORK_KEYWORDS.get(net_name, set())
-                keyword_overlap = query_words & net_keywords
-                if keyword_overlap:
-                    relevance *= 1.0 + len(keyword_overlap) * 0.1
-
-                if relevance == 0:
-                    continue
-
-                # Importance score (from GA paper)
-                importance = entry.get("importance", 0.5)
-
-                # Recency score (from GA paper: exponential decay)
-                age = time.time() - entry.get("last_access", time.time())
-                recency = math.exp(-age / 3600)  # Decay over hours
-
-                # Combined score (from GA paper equation)
-                score = 0.5 * relevance + 0.3 * importance + 0.2 * recency
-
-                entry["access_count"] = entry.get("access_count", 0) + 1
-                entry["last_access"] = time.time()
-
-                results.append({
-                    "content": entry["content"],
-                    "score": score,
-                    "network": net_name,
-                    "importance": importance,
-                    "recency": recency,
-                    "relevance": relevance,
-                })
-
-        # Tag-based boost
+        # Phase 1: Collect candidates via tag index (O(K) instead of O(N))
+        candidate_entries = set()
         for tag in query_words:
             if tag in self._tag_index:
                 for net_name, idx in self._tag_index[tag]:
                     if net_name in self._networks and idx < len(self._networks[net_name]):
-                        entry = self._networks[net_name][idx]
-                        already = any(r["content"] == entry["content"] for r in results)
-                        if not already:
-                            results.append({
-                                "content": entry["content"], "score": 0.3,
-                                "network": net_name, "importance": entry.get("importance", 0.5),
-                            })
+                        candidate_entries.add((net_name, idx))
+
+        # Also add recent entries (last 5 per network) for recency bonus
+        for net_name in networks:
+            net = self._networks[net_name]
+            for i in range(max(0, len(net) - 5), len(net)):
+                candidate_entries.add((net_name, i))
+
+        # Phase 2: Score only candidates
+        for net_name, idx in candidate_entries:
+            entry = self._networks[net_name][idx]
+
+            content_lower = entry["content"].lower()
+            relevance = 0.0
+            if query_lower in content_lower:
+                relevance = 1.0
+            content_words = set(content_lower.split())
+            overlap = query_words & content_words
+            if query_words:
+                relevance += len(overlap) / len(query_words) * 0.5
+
+            net_keywords = self.NETWORK_KEYWORDS.get(net_name, set())
+            keyword_overlap = query_words & net_keywords
+            if keyword_overlap:
+                relevance *= 1.0 + len(keyword_overlap) * 0.1
+
+            if relevance == 0:
+                continue
+
+            importance = entry.get("importance", 0.5)
+            age = time.time() - entry.get("last_access", time.time())
+            recency = math.exp(-age / 3600)
+
+            score = 0.5 * relevance + 0.3 * importance + 0.2 * recency
+
+            entry["access_count"] = entry.get("access_count", 0) + 1
+            entry["last_access"] = time.time()
+
+            results.append({
+                "content": entry["content"],
+                "score": score,
+                "network": net_name,
+                "importance": importance,
+                "recency": recency,
+                "relevance": relevance,
+            })
 
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]

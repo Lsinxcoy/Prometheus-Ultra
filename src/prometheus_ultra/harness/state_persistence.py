@@ -10,7 +10,10 @@ import json, os, time
 class StatePersistence:
     """Persist and restore Omega memory state."""
 
-    def __init__(self, path: str = "E:/Prometheus-Ultra/omega_state.json"):
+    def __init__(self, path: str | None = None):
+        if path is None:
+            path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "omega_state.json")
+            path = os.path.normpath(path)
         self._path = path
 
     def save(self, omega) -> dict:
@@ -26,6 +29,9 @@ class StatePersistence:
             "evolution_count": len(omega.evolution_engine._history),
             "dream_count": len(omega.dream._memories),
         }
+        parent = os.path.dirname(self._path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(self._path, 'w') as f:
             json.dump(state, f)
         return state

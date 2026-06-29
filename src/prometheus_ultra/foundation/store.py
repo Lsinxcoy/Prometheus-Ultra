@@ -248,6 +248,11 @@ CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(type);
 CREATE INDEX IF NOT EXISTS idx_write_log_node ON write_log(node_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_node ON feedback_log(node_id);
 CREATE INDEX IF NOT EXISTS idx_evolution_cycle ON evolution_log(cycle_id);
+
+-- FTS5 full-text search index
+CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
+    id UNINDEXED, content, tags, entity_ids, creator_agent, branch
+);
 """
 
 
@@ -397,8 +402,8 @@ class MinervaStore:
                 # Update FTS index
                 try:
                     self._conn.execute(
-                        "INSERT INTO nodes_fts (id, content, tags) VALUES (?,?,?)",
-                        (node.id, node.content, json.dumps(node.tags)),
+                        "INSERT INTO nodes_fts (id, content, tags, entity_ids, creator_agent, branch) VALUES (?,?,?,?,?,?)",
+                        (node.id, node.content, json.dumps(node.tags), "[]", None, node.branch),
                     )
                 except sqlite3.OperationalError:
                     pass  # FTS table may not exist
@@ -515,6 +520,14 @@ class MinervaStore:
                     "DELETE FROM nodes WHERE id=?", (node_id,)
                 )
                 nodes_deleted = node_cursor.rowcount
+
+                # Delete from FTS index
+                try:
+                    self._conn.execute(
+                        "DELETE FROM nodes_fts WHERE id=?", (node_id,)
+                    )
+                except sqlite3.OperationalError:
+                    pass
 
                 self._conn.commit()
 
@@ -816,16 +829,10 @@ class MinervaStore:
                             conflicts += 1
                         merged += 1
                     else:
-                        # Insert new
+                        # Move node to target branch (UPDATE existing row)
                         self._conn.execute(
-                            """INSERT INTO nodes (id, type, content, utility, surprise, tags,
-                               branch, source, confidence, tier, access_count,
-                               created_at, updated_at, tx_from, tx_to, version)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                            (node.id, node.type.value, node.content, node.utility, node.surprise,
-                             json.dumps(node.tags), target, node.source.value, node.confidence,
-                             node.tier.value, node.access_count, node.created_at, node.updated_at,
-                             node.tx_from, node.tx_to, node.version),
+                            "UPDATE nodes SET branch=? WHERE id=? AND branch=?",
+                            (target, node.id, source),
                         )
                         merged += 1
 
