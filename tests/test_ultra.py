@@ -340,7 +340,7 @@ class TestStatus:
     def test_status(self, omega):
         status = omega.status()
         assert status.health in ("healthy", "empty", "degraded", "critical")
-        assert status.mechanisms == 102
+        assert status.mechanisms == 127
         assert status.version == "1.0.0"
 
 

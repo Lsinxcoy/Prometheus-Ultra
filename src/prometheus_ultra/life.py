@@ -3,7 +3,7 @@
 Unified from Genesis(99 mechanisms), Omega-Omega(branch system),
 and Z:\Prometheus Ω(deep evolution + 4-layer defense).
 
-107 mechanisms across 15 subsystems.
+127 mechanisms across 18 subsystems.
 7 pipelines: remember, recall, evolve, learn, reflect, dream, maintain.
 Branch system for parallel experimentation.
 """
@@ -218,7 +218,7 @@ logger = logging.getLogger(__name__)
 
 
 class Omega:
-    """Prometheus Ultra — 99-mechanism self-evolving AI agent system.
+    """Prometheus Ultra — 127-mechanism self-evolving AI agent system.
 
     Composes all subsystems into a unified interface with 7 pipelines.
     Supports branch-based parallel experimentation.
@@ -497,7 +497,7 @@ class Omega:
             HarnessPrimitive(name="reflexion", type="control", content="Self-reflection and learning")
         )
 
-        logger.info("Prometheus Ultra initialized: 117 mechanisms across 18 subsystems")
+        logger.info("Prometheus Ultra initialized: 127 mechanisms across 18 subsystems")
 
     # ============================================================
     # remember pipeline (11 stages)
@@ -913,6 +913,12 @@ class Omega:
         # Stage 0: Brainstorming — Socratic design refinement (Superpowers)
         brainstorm_result = self.brainstorming.brainstorm(
             topic=context or "auto-evolution", context="evolve pipeline"
+        )
+
+        # PlanWriter: generate implementation plan from brainstorming (Superpowers)
+        plan = self.plan_writer.write_plan(
+            feature=context or "auto-evolution",
+            context="evolve pipeline after brainstorming",
         )
 
         # LoopSelector: auto-select loop strategy
@@ -1851,7 +1857,7 @@ class Omega:
             uptime_seconds=time.time() - self._start_time,
             health=self._compute_health(),
             version="1.0.0",
-            mechanisms=102,
+            mechanisms=127,
             details={
                 "bank_count": self.bank.count(),
                 "convergence": self.convergence.is_converged(),

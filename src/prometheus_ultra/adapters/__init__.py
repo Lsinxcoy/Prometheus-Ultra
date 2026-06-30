@@ -1,2 +1,0 @@
-from prometheus_ultra.adapters.x_adapter import XMemoryAdapter
-from prometheus_ultra.adapters.y_adapter import YBankAdapter

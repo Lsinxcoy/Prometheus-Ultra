@@ -1,4 +1,4 @@
-"""Prometheus Ultra — 99-mechanism self-evolving AI agent reinforcement system.
+"""Prometheus Ultra — 127-mechanism self-evolving AI agent reinforcement system.
 
 Unified from Genesis(99 mechanisms), Omega-Omega(90 mechanisms, branch system),
 and Z:\Prometheus Ω(47 mechanisms, deep evolution + 4-layer defense).
