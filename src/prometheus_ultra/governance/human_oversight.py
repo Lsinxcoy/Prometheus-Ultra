@@ -21,11 +21,15 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
-class RiskLevel(Enum):
+class OversightRiskLevel(Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+# Backward compatibility alias
+RiskLevel = OversightRiskLevel
 
 
 class OversightDecision(Enum):

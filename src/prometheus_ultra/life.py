@@ -13,12 +13,12 @@ import logging
 import time
 
 from prometheus_ultra.foundation.schema import (
-    Node, Edge, NodeType, EdgeType, MemoryTier, TrustLevel,
-    ProvenanceType, GateResult, EvolutionResult,
+    Node, Edge, NodeType, EdgeType, TrustLevel,
+    EvolutionResult,
     SearchHit, SearchResults, DreamResult, EvolutionOutcome,
     SystemStatus, ZConfig, generate_uuidv7, AlertLevel, LoopState,
 )
-from prometheus_ultra.foundation.store import MinervaStore, IronLawViolation
+from prometheus_ultra.foundation.store import MinervaStore
 
 # Memory
 from prometheus_ultra.memory.dopamine import DopamineWriteGate, DopamineGateConfig
@@ -60,7 +60,7 @@ from prometheus_ultra.evolution.evolution_engine import EvolutionEngine
 
 # Safety
 from prometheus_ultra.safety.instincts import InstinctsRegistry, register_default_instincts
-from prometheus_ultra.safety.five_gates import FiveGates, CascadeResult
+from prometheus_ultra.safety.five_gates import FiveGates
 from prometheus_ultra.safety.loop_guard import LoopGuard
 from prometheus_ultra.safety.equilibrium_guard import EquilibriumGuard
 from prometheus_ultra.safety.rl_pathology import RLPathologyDetector
@@ -169,12 +169,12 @@ from prometheus_ultra.memory.context_isolator import ContextIsolator
 from prometheus_ultra.harness.context_window import ContextWindowManager
 from prometheus_ultra.harness.progressive_complexity import ProgressiveComplexity
 from prometheus_ultra.harness.crash_restore import CrashStateRestore
-from prometheus_ultra.governance.human_oversight import HumanOversight, RiskLevel
+from prometheus_ultra.governance.human_oversight import HumanOversight, OversightRiskLevel as RiskLevel
 from prometheus_ultra.prompt.structured_output import StructuredOutput, SchemaField
 from prometheus_ultra.prompt.xml_tag import XMLTagPrompting
 from prometheus_ultra.prompt.reasoning_adapter import ReasoningModelAdapter
 from prometheus_ultra.harness.context_engineering import ContextEngineering, ContextComponent
-from prometheus_ultra.loop.loop_selector import LoopSelector, LoopStrategy, TaskComplexity
+from prometheus_ultra.loop.loop_selector import LoopSelector, LoopStrategy
 from prometheus_ultra.harness.adaptive_harness import AdaptiveHarness, ToolPolicy
 from prometheus_ultra.prompt.evolving_prompt import EvolvingPrompt
 

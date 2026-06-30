@@ -26,7 +26,16 @@ __version__ = "1.0.0"
 __all__ = [
     "Omega",
     "MinervaStore", "IronLawViolation",
-    "NodeType", "EdgeType", "MemoryTier", "GateResult", "EvolutionResult",
+    "NodeType", "EdgeType", "MemoryTier", "MemoryLayer",
+    "GateResult", "EvolutionResult", "EvolutionOutcome",
     "Node", "Edge", "ZConfig", "generate_uuidv7",
-    "SearchResults", "DreamResult", "EvolutionOutcome", "SystemStatus",
+    "SearchHit", "SearchResults", "DreamResult", "SystemStatus",
+    "TrustLevel", "AutonomyLevel", "SecurityPosture", "AlertLevel",
+    "EvolutionDirection", "LifecycleAction", "CommitState",
+    "ProvenanceType", "ConstraintKind", "WriteOperator",
+    "Strictness", "RiskLevel", "GraderType", "MemoryScope",
+    "FailureMode", "WeibullParams", "NodeFeedback", "FailureLog",
+    "Constraint", "Provenance", "GateCheckResult", "WriteGateResult",
+    "LifecycleDecision", "EvolutionCheckResult", "VerificationResult",
+    "HookResult",
 ]
