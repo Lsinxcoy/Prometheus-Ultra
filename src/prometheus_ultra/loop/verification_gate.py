@@ -19,7 +19,7 @@ class VerificationCheck:
 
 
 @dataclass
-class VerificationResult:
+class GateVerificationResult:
     task: str = ""
     checks: list[VerificationCheck] = field(default_factory=list)
     all_critical_passed: bool = False
@@ -39,11 +39,11 @@ class VerificationGate:
 
     def __init__(self):
         self._history: list[dict] = []
-        self._verifications: list[VerificationResult] = []
+        self._verifications: list[GateVerificationResult] = []
 
     def verify(self, task: str, fix_applied: str = "",
-               tests_passing: bool = True) -> VerificationResult:
-        result = VerificationResult(task=task)
+                tests_passing: bool = True) -> GateVerificationResult:
+        result = GateVerificationResult(task=task)
 
         checks = self._run_checks(task, fix_applied, tests_passing)
         result.checks = checks

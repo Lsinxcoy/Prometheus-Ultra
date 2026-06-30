@@ -15,7 +15,7 @@ class ParameterVector:
 
 
 @dataclass
-class EvolutionResult:
+class GEPAResult:
     method: str = "gepa"
     improvement: float = 0.0
     cost_delta: float = 0.0
@@ -39,7 +39,7 @@ class GEPA:
         self._population: list[ParameterVector] = []
         self._history: list[dict] = []
 
-    def evolve(self, task: str, eval_fn=None, generations: int = 10) -> EvolutionResult:
+    def evolve(self, task: str, eval_fn=None, generations: int = 10) -> GEPAResult:
         if not self._population:
             self._population = [
                 ParameterVector(values=[random.random() for _ in range(5)])
@@ -75,7 +75,7 @@ class GEPA:
 
         self._history.append({"task": task, "best_fitness": best.fitness})
 
-        return EvolutionResult(
+        return GEPAResult(
             method="gepa",
             improvement=best.fitness,
             cost_delta=generations * 0.05,

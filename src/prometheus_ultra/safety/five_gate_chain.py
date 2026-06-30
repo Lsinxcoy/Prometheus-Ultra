@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class GateResult:
+class FiveGateResult:
     gate_name: str = ""
     passed: bool = True
     confidence: float = 1.0
@@ -44,7 +44,7 @@ class FiveGateMemoryChain:
         self._concentration = 2.0
 
     def write_gate(self, content: str, utility: float = 0.5,
-                   novelty: float = 0.5) -> GateResult:
+                   novelty: float = 0.5) -> FiveGateResult:
         """Gate 1: SAGE vMF novelty filtering.
 
         Uses von Mises-Fisher inspired concentration scoring:
@@ -81,7 +81,7 @@ class FiveGateMemoryChain:
         if passed:
             self._stats["write_passed"] += 1
 
-        return GateResult(
+        return FiveGateResult(
             gate_name="write_gate",
             passed=passed,
             confidence=score,
@@ -89,7 +89,7 @@ class FiveGateMemoryChain:
         )
 
     def read_gate(self, query: str, trust_score: float = 0.5,
-                  source_reliability: float = 0.5) -> GateResult:
+                  source_reliability: float = 0.5) -> FiveGateResult:
         """Gate 2: MemGate trust filtering."""
         self._stats["read_checked"] += 1
 
@@ -99,14 +99,14 @@ class FiveGateMemoryChain:
         if passed:
             self._stats["read_passed"] += 1
 
-        return GateResult(
+        return FiveGateResult(
             gate_name="read_gate",
             passed=passed,
             confidence=score,
             reason="trust=%.2f, source=%.2f" % (trust_score, source_reliability),
         )
 
-    def modify_gate(self, content: str, delta: float = 0.0) -> GateResult:
+    def modify_gate(self, content: str, delta: float = 0.0) -> FiveGateResult:
         """Gate 3: SkillAdaptor delta>=0."""
         self._stats["modify_checked"] += 1
 
@@ -115,7 +115,7 @@ class FiveGateMemoryChain:
         if passed:
             self._stats["modify_passed"] += 1
 
-        return GateResult(
+        return FiveGateResult(
             gate_name="modify_gate",
             passed=passed,
             confidence=max(0, delta),
@@ -123,7 +123,7 @@ class FiveGateMemoryChain:
         )
 
     def consolidate_gate(self, content: str, drift_score: float = 0.0,
-                         age_hours: float = 0.0) -> GateResult:
+                         age_hours: float = 0.0) -> FiveGateResult:
         """Gate 4: Nautilus drift detection."""
         self._stats["consolidate_checked"] += 1
 
@@ -134,7 +134,7 @@ class FiveGateMemoryChain:
         if passed:
             self._stats["consolidate_passed"] += 1
 
-        return GateResult(
+        return FiveGateResult(
             gate_name="consolidate_gate",
             passed=passed,
             confidence=1.0 - drift_score,
@@ -142,7 +142,7 @@ class FiveGateMemoryChain:
         )
 
     def execute_gate(self, action: str, risk_level: float = 0.5,
-                     user_approval: bool = False) -> GateResult:
+                     user_approval: bool = False) -> FiveGateResult:
         """Gate 5: AURA-Mem action gating."""
         self._stats["execute_checked"] += 1
 
@@ -159,7 +159,7 @@ class FiveGateMemoryChain:
         if passed:
             self._stats["execute_passed"] += 1
 
-        return GateResult(
+        return FiveGateResult(
             gate_name="execute_gate",
             passed=passed,
             confidence=1.0 - risk_level,
@@ -168,7 +168,7 @@ class FiveGateMemoryChain:
 
     def check_all(self, content: str, utility: float = 0.5, novelty: float = 0.5,
                   trust_score: float = 0.5, delta: float = 0.0,
-                  drift_score: float = 0.0, risk_level: float = 0.3) -> list[GateResult]:
+                  drift_score: float = 0.0, risk_level: float = 0.3) -> list[FiveGateResult]:
         results = []
 
         r1 = self.write_gate(content, utility, novelty)

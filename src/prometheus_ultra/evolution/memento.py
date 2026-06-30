@@ -19,7 +19,7 @@ class MethodMemory:
 
 
 @dataclass
-class EvolutionResult:
+class MementoResult:
     method: str = "memento"
     improvement: float = 0.0
     cost_delta: float = 0.0
@@ -40,7 +40,7 @@ class Memento:
         self._history: list[dict] = []
 
     def evolve(self, task: str, current_method: str = "",
-               success: bool = True) -> EvolutionResult:
+                success: bool = True) -> MementoResult:
         # Update memory for current method
         existing = [m for m in self._memory if m.method_name == current_method]
         if existing:
@@ -68,7 +68,7 @@ class Memento:
 
         self._history.append({"task": task, "method": current_method, "success": success})
 
-        return EvolutionResult(
+        return MementoResult(
             method="memento",
             improvement=improvement,
             cost_delta=0.02,

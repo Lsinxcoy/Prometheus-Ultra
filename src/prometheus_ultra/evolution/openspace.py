@@ -20,7 +20,7 @@ class ExplorationPoint:
 
 
 @dataclass
-class EvolutionResult:
+class OpenSpaceResult:
     method: str = "openspace"
     improvement: float = 0.0
     cost_delta: float = 0.0
@@ -53,7 +53,7 @@ class OpenSpace:
         self._best_ever: ExplorationPoint | None = None
 
     def evolve(self, task: str, current_fitness: float = 0.5,
-               eval_fn=None) -> EvolutionResult:
+                eval_fn=None) -> OpenSpaceResult:
         if not self._population:
             self._population = self._initialize_population(current_fitness)
 
@@ -94,7 +94,7 @@ class OpenSpace:
             "mutation_rate": self._mutation_rate,
         })
 
-        return EvolutionResult(
+        return OpenSpaceResult(
             method="openspace",
             improvement=max(0, improvement),
             cost_delta=self._pop_size * 0.01,

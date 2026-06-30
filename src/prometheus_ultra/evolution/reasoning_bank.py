@@ -23,7 +23,7 @@ class ReasoningStrategy:
 
 
 @dataclass
-class EvolutionResult:
+class ReasoningResult:
     method: str = "reasoning_bank"
     improvement: float = 0.0
     cost_delta: float = 0.0
@@ -118,7 +118,7 @@ class ReasoningBank:
             name=name, description=description, task_types=task_types,
         ))
 
-    def evolve(self, task: str, context: dict = None) -> EvolutionResult:
+    def evolve(self, task: str, context: dict = None) -> ReasoningResult:
         context = context or {}
         task_type = context.get("type", "general")
 
@@ -139,7 +139,7 @@ class ReasoningBank:
             "strategy": best_strategy, "improvement": improvement,
         })
 
-        return EvolutionResult(
+        return ReasoningResult(
             method="reasoning_bank",
             improvement=improvement,
             cost_delta=0.03,

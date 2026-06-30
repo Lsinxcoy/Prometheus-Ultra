@@ -16,7 +16,7 @@ class SearchResult:
 
 
 @dataclass
-class EvolutionResult:
+class EverOSResult:
     method: str = "everos"
     improvement: float = 0.0
     cost_delta: float = 0.0
@@ -37,7 +37,7 @@ class EverOS:
         self._history: list[dict] = []
 
     def evolve(self, task: str, current_approach: str = "",
-               context: dict = None) -> EvolutionResult:
+                context: dict = None) -> EverOSResult:
         context = context or {}
         strategies = ["nearest_neighbor", "graph_walk", "keyword_expansion", "semantic_search"]
 
@@ -53,7 +53,7 @@ class EverOS:
         improvement = best_score * 0.15
         self._history.append({"task": task, "strategy": best_strategy, "score": best_score})
 
-        return EvolutionResult(
+        return EverOSResult(
             method="everos",
             improvement=improvement,
             cost_delta=improvement * 0.1,
