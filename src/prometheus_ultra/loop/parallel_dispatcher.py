@@ -6,6 +6,7 @@ Key insight: Run independent tasks concurrently, then merge results.
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 
@@ -18,6 +19,7 @@ class SubagentTask:
     start_time: float = 0.0
     end_time: float = 0.0
     duration_ms: float = 0.0
+    error: str = ""
 
 
 @dataclass
@@ -31,12 +33,12 @@ class DispatchResult:
 
 
 class ParallelDispatcher:
-    """Concurrent subagent workflow dispatcher.
+    """Concurrent subagent workflow dispatcher with real thread pool.
 
     Based on Superpowers dispatching-parallel-agents skill:
     1. Identify independent tasks that can run in parallel
-    2. Dispatch each to a fresh subagent
-    3. Collect results
+    2. Dispatch each to a thread pool worker
+    3. Collect results as they complete
     4. Merge and validate
     """
 
@@ -45,7 +47,8 @@ class ParallelDispatcher:
         self._dispatches: list[dict] = []
         self._batch_counter = 0
 
-    def dispatch(self, tasks: list[dict], batch_id: str = "") -> DispatchResult:
+    def dispatch(self, tasks: list[dict], batch_id: str = "",
+                 task_handler=None) -> DispatchResult:
         if not batch_id:
             self._batch_counter += 1
             batch_id = "batch_%d" % self._batch_counter
@@ -63,12 +66,32 @@ class ParallelDispatcher:
             )
             subagent_tasks.append(st)
 
-        for st in subagent_tasks:
-            st.status = "complete"
-            st.end_time = time.time()
-            st.duration_ms = (st.end_time - st.start_time) * 1000
-            st.result = {"success": True, "task": st.description}
-            result.completed += 1
+        if task_handler:
+            with ThreadPoolExecutor(max_workers=self._max_concurrent) as executor:
+                future_to_task = {}
+                for st in subagent_tasks:
+                    future = executor.submit(task_handler, st.description)
+                    future_to_task[future] = st
+
+                for future in as_completed(future_to_task):
+                    st = future_to_task[future]
+                    st.end_time = time.time()
+                    st.duration_ms = (st.end_time - st.start_time) * 1000
+                    try:
+                        st.result = future.result()
+                        st.status = "complete"
+                        result.completed += 1
+                    except Exception as e:
+                        st.status = "failed"
+                        st.error = str(e)
+                        result.failed += 1
+        else:
+            for st in subagent_tasks:
+                st.end_time = time.time()
+                st.duration_ms = (st.end_time - st.start_time) * 1000
+                st.result = {"success": True, "task": st.description}
+                st.status = "complete"
+                result.completed += 1
 
         result.tasks = subagent_tasks
         result.total_duration_ms = (time.time() - start_time) * 1000
@@ -89,6 +112,7 @@ class ParallelDispatcher:
             "successful": sum(1 for t in tasks if t.status == "complete"),
             "failed": sum(1 for t in tasks if t.status == "failed"),
             "results": [t.result for t in tasks if t.status == "complete"],
+            "errors": [t.error for t in tasks if t.status == "failed" and t.error],
         }
         return merged
 
