@@ -108,7 +108,7 @@ class KnowledgeToMechanism:
         return mappings
 
     def apply_mapping(self, mapping: MechanismMapping, omega) -> bool:
-        """Apply a parameter change to the Omega system."""
+        """Apply a parameter change to the Omega system via setattr."""
         try:
             target = getattr(omega, mapping.target_module, None)
             if target is None:
@@ -122,10 +122,11 @@ class KnowledgeToMechanism:
                     elif mapping.direction == "increase":
                         new_value = old_value * 1.2
                     else:
-                        new_value = old_value  # no change, just log
+                        new_value = old_value
 
                     mapping.old_value = old_value
                     mapping.new_value = new_value
+                    setattr(target, mapping.target_param, new_value)
                     mapping.applied = True
                     self._applied_count += 1
                     return True

@@ -60,8 +60,6 @@ class EVAFConsolidation:
             self._consolidation_count += 1
             self._stats["consolidated"] += 1
 
-        self._stats["evaluated"] += 1
-
         return ConsolidationCandidate(
             memory_id=memory_id,
             surprise=surprise,

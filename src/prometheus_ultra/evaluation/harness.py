@@ -263,7 +263,13 @@ class HarnessX:
             Average score across test cases, or dict if backward-compat.
         """
         if config is None:
-            return type('R', (), {'composite_score': 0, 'grade': 'C', 'dimensions': None})()
+            if self._configs:
+                best = max(self._configs, key=lambda c: c.score)
+                return best
+            return HarnessConfig(
+                primitives=list(self._primitives.values())[:3],
+                score=0.5, version=1,
+            )
 
         test_cases = test_cases or []
         scores = []

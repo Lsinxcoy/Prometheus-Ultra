@@ -35,9 +35,18 @@ class FiveGates:
         self._current_min_utility = self._cfg.min_utility
         self._current_max_surprise = self._cfg.max_surprise
         self._pass_history: list[bool] = []
+        self._utility_history: list[float] = []
+        self._surprise_history: list[float] = []
 
     def evaluate(self, node: Node, context: dict | None = None) -> CascadeResult:
         self._evaluated += 1
+
+        self._utility_history.append(node.utility)
+        self._surprise_history.append(node.surprise)
+        if len(self._utility_history) > 100:
+            self._utility_history = self._utility_history[-50:]
+        if len(self._surprise_history) > 100:
+            self._surprise_history = self._surprise_history[-50:]
 
         min_util = self._get_dynamic_threshold("min_utility", self._current_min_utility)
         max_surp = self._get_dynamic_threshold("max_surprise", self._current_max_surprise)
@@ -67,6 +76,17 @@ class FiveGates:
         return CascadeResult(passed=all_passed, gates_checked=len(checks), details=checks)
 
     def _get_dynamic_threshold(self, name: str, default: float) -> float:
+        if not self._adaptive:
+            return default
+
+        if name == "min_utility" and len(self._utility_history) >= 10:
+            avg_util = sum(self._utility_history[-10:]) / 10
+            return max(0.05, min(0.5, avg_util * 0.3))
+
+        if name == "max_surprise" and len(self._surprise_history) >= 10:
+            avg_surp = sum(self._surprise_history[-10:]) / 10
+            return max(0.5, min(1.5, avg_surp * 1.5))
+
         return default
 
     def _adapt_thresholds(self):

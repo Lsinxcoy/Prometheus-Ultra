@@ -71,6 +71,9 @@ class VeracityBayesian:
     def compute_posterior(self, prior: float, evidence: Evidence) -> float:
         """Compute Bayesian posterior probability.
 
+        Uses source_confidence, consistency, AND corroboration.
+        Corroboration acts as a multiplier on the likelihood.
+
         Args:
             prior: Prior probability P(H) [0, 1].
             evidence: Evidence with source_confidence, consistency, corroboration.
@@ -78,7 +81,9 @@ class VeracityBayesian:
         Returns:
             Posterior probability P(H|E) [0, 1].
         """
-        likelihood = evidence.source_confidence * evidence.consistency
+        base_likelihood = evidence.source_confidence * evidence.consistency
+        corroboration_boost = evidence.corroboration * 0.2
+        likelihood = min(1.0, base_likelihood + corroboration_boost)
         posterior = (likelihood * prior) / max(likelihood * prior + (1 - likelihood) * (1 - prior), 0.001)
         self._posteriors.append(posterior)
         return posterior

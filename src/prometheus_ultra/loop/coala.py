@@ -117,24 +117,58 @@ class CoALAArchitecture:
     def retrieve_from_ltm(self, query: str, top_k: int = 3) -> list[dict]:
         """Retrieve relevant items from long-term memory.
 
-        From CoALA: "Long-term memory stores experiences that
-        can be retrieved when relevant to current goals"
+        Uses TF-IDF-inspired scoring:
+        - Term frequency in query × inverse document frequency
+        - Positional bonus for exact phrase matches
+        - Recency decay for older items
         """
+        import math
         query_lower = query.lower()
-        query_words = set(query_lower.split())
+        query_words = query_lower.split()
+
+        # Compute IDF-like weights for query words
+        doc_count = len(self._long_term_memory)
+        word_doc_freq: dict[str, int] = {}
+        for item in self._long_term_memory:
+            content_words = set(item.content.lower().split())
+            for w in query_words:
+                if w in content_words:
+                    word_doc_freq[w] = word_doc_freq.get(w, 0) + 1
+
+        idf_weights = {}
+        for w in query_words:
+            df = word_doc_freq.get(w, 0)
+            idf_weights[w] = math.log(max(1, doc_count) / max(1, df)) + 1.0
 
         scored = []
+        current_time = time.time()
         for item in self._long_term_memory:
             content_lower = item.content.lower()
             content_words = set(content_lower.split())
 
-            # Score: exact match + word overlap + importance
+            # TF-IDF score
             score = 0.0
+            for w in query_words:
+                if w in content_words:
+                    tf = content_lower.count(w) / max(len(content_words), 1)
+                    score += tf * idf_weights.get(w, 1.0)
+
+            # Exact phrase bonus
             if query_lower in content_lower:
-                score += 1.0
-            overlap = query_words & content_words
-            if query_words:
-                score += len(overlap) / len(query_words) * 0.5
+                score += 2.0
+
+            # Partial phrase match
+            for i in range(len(query_words) - 1):
+                bigram = query_words[i] + " " + query_words[i + 1]
+                if bigram in content_lower:
+                    score += 0.5
+
+            # Recency decay (exponential)
+            age_hours = (current_time - item.timestamp) / 3600
+            recency = math.exp(-age_hours / 168)  # 1-week half-life
+            score *= (0.7 + 0.3 * recency)
+
+            # Importance boost
             score *= (0.5 + item.importance * 0.5)
 
             if score > 0.01:

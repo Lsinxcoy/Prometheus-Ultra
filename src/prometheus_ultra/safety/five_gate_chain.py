@@ -8,12 +8,11 @@ Five gates in sequence:
     3. Modify Gate (SkillAdaptor delta>=0) — only allow beneficial modifications
     4. Consolidate Gate (Nautilus drift) — detect drift before merging
     5. Execute Gate (AURA-Mem action) — pre-action interception
-
-Each gate is a circuit breaker on the error propagation chain.
-Memory-as-Governance: deterministic interception before action.
 """
 from __future__ import annotations
 
+import math
+from collections import Counter
 from dataclasses import dataclass, field
 
 
@@ -29,17 +28,7 @@ class FiveGateMemoryChain:
     """Five-gate memory governance chain.
 
     Based on MiMo Knowledge #20 (五重门控理论).
-
-    Usage:
-        chain = FiveGateMemoryChain()
-        # Write gate
-        result = chain.write_gate(content="new memory", utility=0.8, novelty=0.7)
-        if result.passed:
-            store.write(content)
-        # Read gate
-        result = chain.read_gate(query="AI safety", trust_score=0.9)
-        # Execute gate
-        result = chain.execute_gate(action="call_tool", risk_level=0.3)
+    Implements vMF-inspired novelty filtering for the write gate.
     """
 
     def __init__(self):
@@ -51,19 +40,43 @@ class FiveGateMemoryChain:
             "execute_checked": 0, "execute_passed": 0,
         }
         self._history: list[dict] = []
+        self._seen_content: list[set[str]] = []
+        self._concentration = 2.0
 
     def write_gate(self, content: str, utility: float = 0.5,
                    novelty: float = 0.5) -> GateResult:
-        """Gate 1: Accept/reject new memory writes.
+        """Gate 1: SAGE vMF novelty filtering.
 
-        From MiMo: "SAGE vMF novelty filtering"
-        High novelty + high utility = accept
-        Low novelty + low utility = reject
+        Uses von Mises-Fisher inspired concentration scoring:
+        - Content with rare words gets higher novelty
+        - Repeated content patterns get lower novelty
         """
         self._stats["write_checked"] += 1
 
-        score = utility * 0.6 + novelty * 0.4
+        words = set(content.lower().split())
+        word_freq = Counter()
+        for seen in self._seen_content[-100:]:
+            for w in words:
+                if w in seen:
+                    word_freq[w] += 1
+
+        total_seen = max(len(self._seen_content), 1)
+        novelty_score = 0.0
+        for w in words:
+            freq = word_freq.get(w, 0) / total_seen
+            novelty_score += 1.0 - min(1.0, freq)
+
+        if words:
+            novelty_score /= len(words)
+
+        novelty_score = novelty_score * 0.7 + novelty * 0.3
+
+        score = utility * 0.5 + novelty_score * 0.5
         passed = score >= 0.3
+
+        self._seen_content.append(words)
+        if len(self._seen_content) > 200:
+            self._seen_content = self._seen_content[-100:]
 
         if passed:
             self._stats["write_passed"] += 1
@@ -72,16 +85,12 @@ class FiveGateMemoryChain:
             gate_name="write_gate",
             passed=passed,
             confidence=score,
-            reason="score=%.2f (utility=%.2f * 0.6 + novelty=%.2f * 0.4)" % (score, utility, novelty),
+            reason="score=%.3f (util=%.2f, vmf_novelty=%.3f)" % (score, utility, novelty_score),
         )
 
     def read_gate(self, query: str, trust_score: float = 0.5,
                   source_reliability: float = 0.5) -> GateResult:
-        """Gate 2: Filter retrieval by trust.
-
-        From MiMo: "MemGate trust filtering"
-        Low trust sources get deprioritized
-        """
+        """Gate 2: MemGate trust filtering."""
         self._stats["read_checked"] += 1
 
         score = trust_score * 0.5 + source_reliability * 0.5
@@ -98,11 +107,7 @@ class FiveGateMemoryChain:
         )
 
     def modify_gate(self, content: str, delta: float = 0.0) -> GateResult:
-        """Gate 3: Only allow beneficial modifications.
-
-        From MiMo: "SkillAdaptor delta>=0"
-        Modifications must improve, not degrade
-        """
+        """Gate 3: SkillAdaptor delta>=0."""
         self._stats["modify_checked"] += 1
 
         passed = delta >= 0
@@ -119,15 +124,11 @@ class FiveGateMemoryChain:
 
     def consolidate_gate(self, content: str, drift_score: float = 0.0,
                          age_hours: float = 0.0) -> GateResult:
-        """Gate 4: Detect drift before merging.
-
-        From MiMo: "Nautilus drift detection"
-        High drift = suspicious, block consolidation
-        """
+        """Gate 4: Nautilus drift detection."""
         self._stats["consolidate_checked"] += 1
 
-        age_factor = min(1.0, age_hours / 168)  # 7 days = full age
-        drift_threshold = 0.3 + age_factor * 0.2  # Older = more lenient
+        age_factor = min(1.0, age_hours / 168)
+        drift_threshold = 0.3 + age_factor * 0.2
         passed = drift_score < drift_threshold
 
         if passed:
@@ -142,11 +143,7 @@ class FiveGateMemoryChain:
 
     def execute_gate(self, action: str, risk_level: float = 0.5,
                      user_approval: bool = False) -> GateResult:
-        """Gate 5: Pre-action interception.
-
-        From MiMo: "AURA-Mem action gating"
-        High risk actions require user approval
-        """
+        """Gate 5: AURA-Mem action gating."""
         self._stats["execute_checked"] += 1
 
         if risk_level > 0.7 and not user_approval:
@@ -172,10 +169,6 @@ class FiveGateMemoryChain:
     def check_all(self, content: str, utility: float = 0.5, novelty: float = 0.5,
                   trust_score: float = 0.5, delta: float = 0.0,
                   drift_score: float = 0.0, risk_level: float = 0.3) -> list[GateResult]:
-        """Run all five gates in sequence.
-
-        Returns list of results. If any gate fails, the chain stops.
-        """
         results = []
 
         r1 = self.write_gate(content, utility, novelty)

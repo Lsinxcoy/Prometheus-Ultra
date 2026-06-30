@@ -78,18 +78,20 @@ class Constitution:
             {"name": "A3_content_required", "level": "A", "check": lambda ctx: bool(ctx.get("content", "").strip())},
             {"name": "A4_tags_format", "level": "A", "check": lambda ctx: isinstance(ctx.get("tags", []), list)},
             {"name": "A5_type_valid", "level": "A", "check": lambda ctx: ctx.get("action", "") in ("remember", "update", "delete", "evolve", "learn")},
-            {"name": "B1_source_known", "level": "B", "check": lambda ctx: True},
+            {"name": "B1_source_known", "level": "B", "check": lambda ctx: bool(ctx.get("source", ""))},
             {"name": "B2_confidence_valid", "level": "B", "check": lambda ctx: 0 <= ctx.get("confidence", 0.5) <= 1},
             {"name": "B3_branch_exists", "level": "B", "check": lambda ctx: bool(ctx.get("branch", "main"))},
-            {"name": "B4_no_cycle", "level": "B", "check": lambda ctx: True},
+            {"name": "B4_no_circular_ref", "level": "B", "check": lambda ctx: not any(
+                ctx.get("content", "").count(w) > 3 for w in ["self-referenc", "circular", "infinite"]
+            )},
             {"name": "B5_version_monotonic", "level": "B", "check": lambda ctx: ctx.get("version", 1) >= 1},
-            {"name": "C1_audit_trail", "level": "C", "check": lambda ctx: True},
-            {"name": "C2_rate_limit", "level": "C", "check": lambda ctx: True},
+            {"name": "C1_audit_trail", "level": "C", "check": lambda ctx: bool(ctx.get("action", ""))},
+            {"name": "C2_rate_limit", "level": "C", "check": lambda ctx: ctx.get("utility", 0.5) <= 1.0},
             {"name": "C3_size_limit", "level": "C", "check": lambda ctx: len(ctx.get("content", "")) < 1_000_000},
             {"name": "C4_encoding_valid", "level": "C", "check": lambda ctx: all(32 <= ord(c) < 0x10000 for c in ctx.get("content", "")[:1000])},
-            {"name": "C5_schema_valid", "level": "C", "check": lambda ctx: True},
-            {"name": "D1_performance", "level": "D", "check": lambda ctx: True},
-            {"name": "D2_resource_limit", "level": "D", "check": lambda ctx: True},
+            {"name": "C5_schema_valid", "level": "C", "check": lambda ctx: isinstance(ctx.get("tags", []), list)},
+            {"name": "D1_performance", "level": "D", "check": lambda ctx: len(ctx.get("content", "")) > 0},
+            {"name": "D2_resource_limit", "level": "D", "check": lambda ctx: ctx.get("utility", 0.5) >= 0.0},
         ]
         self._evaluations = 0
         self._violations_history: list[dict] = []

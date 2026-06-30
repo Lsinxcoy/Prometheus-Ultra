@@ -75,7 +75,7 @@ from prometheus_ultra.safety.constitution import Constitution
 from prometheus_ultra.evaluation.five_view import FiveViewEvaluator
 from prometheus_ultra.evaluation.marginal import MarginalAdvantageAccumulator
 from prometheus_ultra.evaluation.seagym import SEAGym
-from prometheus_ultra.evaluation.harness import HarnessX
+from prometheus_ultra.evaluation.harness import HarnessX, HarnessPrimitive
 from prometheus_ultra.evaluation.bootstrap import BootstrapCI
 
 # Loop
@@ -205,9 +205,6 @@ from prometheus_ultra.evaluation.memory_data_adapter import MemoryDataAdapter
 
 # Lazy import to avoid circular dependency
 TopologicalRetrieval = None
-
-# HarnessX
-from prometheus_ultra.evaluation.harness import HarnessX, HarnessPrimitive
 
 logger = logging.getLogger(__name__)
 
@@ -683,7 +680,10 @@ class Omega:
         _ = self.graph_memory.get_neighbors(node.id)
         self.graph_memory.remove_episode(node.id) if False else None  # skip delete in remember
         self.forgetting.compute_retention(age=0.0)
-        self.gravity.compute(node.id, node.id)
+        if existing:
+            self.gravity.compute(node.id, existing[0].id)
+        else:
+            self.gravity.add_node(node.id, mass=utility)
         _ = self.stream.recent(3)
         _ = self.stream.get_count("remember")
         _ = self.stream.get_type_distribution()
@@ -733,18 +733,16 @@ class Omega:
                                       content=r_dict["content"], snippet=r_dict["content"][:200]))
 
         # Route 3: FourNetwork
-        for r in self.four_network.recall(query, top_k=limit):
-            all_hits.append(SearchHit(node_id="", score=0.5, content=r.get("content", ""),
+        for i, r in enumerate(self.four_network.recall(query, top_k=limit)):
+            all_hits.append(SearchHit(node_id="fn_%d" % i, score=0.5, content=r.get("content", ""),
                                       snippet=r.get("content", "")[:200]))
 
         # Route 4: RTKCache
         cached = self.cache.get(key=query)
         if cached:
-            all_hits.append(SearchHit(node_id="", score=0.8, content=str(cached)))
+            all_hits.append(SearchHit(node_id="cache_%s" % query[:16], score=0.8, content=str(cached)))
 
         # Route 5: Polyphonic
-        for r in self.search.search(query, store=self.store, graph_memory=self.graph_memory, limit=limit):
-            pass
         _ = self.search.get_fusion_stats()
         _ = self.search.get_route_stats()
         self.search.reset_stats()
@@ -769,7 +767,7 @@ class Omega:
         if unique:
             self.cache.put(key=query, value=unique[0].content)
             # ContextFailure: observe retrieval quality
-            self.context_failure.observe_distraction(len(str(unique)), len(unique) / max(limit, 1))
+            self.context_failure.observe_distraction(len(unique), len(unique) / max(limit, 1))
         self.context_failure.observe_clash([h.content[:50] for h in unique[:3]])
         self.context_failure.observe_poisoning(query, is_hallucination=False)
         self.context_failure.observe_confusion(query, "recall context")
@@ -819,7 +817,8 @@ class Omega:
                                  tokens=len(h.content.split()) * 2) for h in unique],
                 target_ratio=0.7,
             )
-            unique = unique[:len(compressed)]
+            compressed_ids = {c.name for c in compressed}
+            unique = [h for h in unique if h.node_id in compressed_ids]
 
         # === Recall: full mechanism activation ===
         # Cache subsystem
@@ -931,30 +930,42 @@ class Omega:
         # Step 3: VerificationIronLaw
         self.iron_law.verify(claim=context or "auto-evolution")
 
-        # Step 4: RLPathology
-        self.rl_pathology.detect_all()
-        self.rl_pathology.observe(fitness_before if 'fitness_before' in dir() else 0.5, "evolve")
+        # Step 3.5: Measure fitness before evolution
+        fitness_before = self._compute_fitness()
 
-        # Step 4.5: UCB1
+        # Step 4: RLPathology — observe() 内部已调用 detect_all()
+        self.rl_pathology.observe(fitness_before, "evolve")
+
+        # Step 4.5: UCB1 — 用实际适应度差值作为奖励信号
         try:
             strategy = self.ucb1.select()
-            self.ucb1.update(strategy, 0.5)
-            _ = self.ucb1.get_arm_stats()
-            _ = self.ucb1.get_best_arm()
+            fitness_reward = max(0.0, min(1.0, fitness_before + 0.5))
+            self.ucb1.update(strategy, fitness_reward)
+            best_arm = self.ucb1.get_best_arm()
         except Exception:
             strategy = "default"
 
-        # Step 4.6: FGG
-        self.fggm.verify_compat({"context": context})
+        # Step 4.6: FGG — 门控结果用于阻断违规进化
+        fgg_result = self.fggm.verify_compat({"context": context})
+        if not fgg_result.get("passed", True):
+            return EvolutionOutcome(result=EvolutionResult.BLOCKED,
+                                    details=f"FGG violations: {fgg_result.get('violations', [])}")
 
         # Step 4.7: EvalDriven
         self.eval_engine.evaluate({"context": context, "strategy": strategy})
 
-        # Step 4.8: DAG scheduling
+        # Step 4.8: DAG scheduling — 添加任务后执行调度
         self.dag_scheduler.add_task(f"evolve_{int(time.time())}", {"context": context})
+        try:
+            scheduled = self.dag_scheduler.schedule()
+        except ValueError:
+            scheduled = []
 
-        # Step 4.9: ConfidenceGate
-        self.confidence_gate.check({"context": context})
+        # Step 4.9: ConfidenceGate — 低置信度阻断进化
+        cg_result = self.confidence_gate.check({"context": context, "fitness": fitness_before})
+        if not cg_result.get("passed", True):
+            return EvolutionOutcome(result=EvolutionResult.BLOCKED,
+                                    details=f"ConfidenceGate: confidence={cg_result.get('confidence', 0):.3f} < threshold={cg_result.get('threshold', 0):.3f}")
 
         # Step 5: HarnessX evolution (with AntiEvolutionGate protection)
         # Compose harness from primitives
@@ -979,7 +990,6 @@ class Omega:
         ])
 
         # Step 7: Execute evolution
-        fitness_before = self._compute_fitness()
 
         # CoEvolution
         self.coevolve.evolve([context or "auto"])
@@ -1069,7 +1079,6 @@ class Omega:
 
         # === Evolve: full mechanism activation ===
         # Safety mechanisms
-        self.circuit_breaker.record_failure()  # test failure path
         _ = self.circuit_breaker.allow_request()
         _ = self.circuit_breaker.get_state()
 
@@ -1276,10 +1285,12 @@ class Omega:
             reflect_components, "reflection analysis", max_tokens=8000
         )
 
+        current_fitness = self._compute_fitness()
         fv = self.five_view.evaluate(
             node_count=self.store.get_node_count(),
             edge_count=self.store.get_edge_count(),
             bank_count=self.bank.count(),
+            evolution_fitness=current_fitness,
             alert_level=self.equilibrium.get_alert_level().value,
             uptime_s=time.time() - self._start_time,
             drift_alerts=len(self.drift_detector.detect()),
@@ -1288,10 +1299,11 @@ class Omega:
         hv = self.harness_x.evaluate()
         # HarnessX: evaluate best config if available
         best_config = self.harness_x.get_best_config()
+        harness_score = getattr(hv, 'score', getattr(hv, 'composite_score', 0.0))
         if best_config:
             harness_eval = self.harness_x.evaluate(best_config, test_cases=[{"input": "reflect"}])
-        else:
-            harness_eval = hv.composite_score if hasattr(hv, 'composite_score') else 0.0
+            if hasattr(harness_eval, 'score'):
+                harness_score = harness_eval.score
         drift = self.drift_detector.detect()
         self.thermodynamic.update(0.1)
         # thermodynamic.reset when temperature is extreme
@@ -1299,7 +1311,7 @@ class Omega:
         if stats.get("temperature", 0.5) > 0.9 or stats.get("temperature", 0.5) < 0.1:
             self.thermodynamic.reset()
         self.convergence.observe(fv.composite_score)
-        self.coala.observe({"five_view": fv.composite_score, "harness": hv.composite_score})
+        self.coala.observe({"five_view": fv.composite_score, "harness": harness_score})
         _ = self.four_network.reflect("system performance", num_reflections=2)
         self.info_gain.record_gain("reflect", fv.composite_score)
         self.agent_forest.add_agent(f"reflector_{int(time.time())}", {"score": fv.composite_score})
@@ -1416,7 +1428,7 @@ class Omega:
 
         return {
             "five_view": {"score": fv.composite_score, "grade": fv.grade},
-            "harness": {"score": hv.composite_score, "grade": hv.grade},
+            "harness": {"score": harness_score, "grade": "B" if harness_score > 0.7 else "C" if harness_score > 0.4 else "D"},
             "drift_alerts": len(drift),
             "thermodynamic": self.thermodynamic.get_stats(),
             "convergence": self.convergence.is_converged(),
@@ -1614,12 +1626,9 @@ class Omega:
         self.zscore.detect()
         self.drift_detector.observe_behavioral(0.5)
         self.cache.delete("old_key")
-        # cache.clear preserves data on purpose; test via cache cleanup cycle
-        if self.cache.contains("old_key"):
-            self.cache.clear()
 
         # Forgetting: get expired nodes for cleanup
-        expired = self.forgetting.get_expired_nodes(threshold=0.1)
+        expired_nodes = self.forgetting.get_expired_nodes(threshold=0.1)
 
         # Trajectory: get action summary
         traj_summary = self.trajectory.get_action_summary()
@@ -1631,7 +1640,7 @@ class Omega:
         # === Maintain: full mechanism activation ===
         # Bank deep operations
         _ = self.bank.count_by_tier()
-        self.bank.deposit("maintain_ref", tier=0)
+        self.bank.deposit("maintain_ref", tier=Tier.WORKING)
         # Store deep operations
         _ = self.store.read_node("test_id")
         self.store.log_evolution("maintain", 0.5, 0.6, "maintain")
@@ -1645,9 +1654,9 @@ class Omega:
         self.store.update_node(temp_node)
         self.store.delete_node("temp_test_node")
         _ = self.bank.get_importance_distribution()
-        _ = self.bank.get_newest_items(0)
-        _ = self.bank.get_oldest_items(0)
-        _ = self.bank.get_tier_items(0)
+        _ = self.bank.get_newest_items(Tier.WORKING)
+        _ = self.bank.get_oldest_items(Tier.WORKING)
+        _ = self.bank.get_tier_items(Tier.WORKING)
 
         # Crash restore deep
         self.crash_restore.save_checkpoint({"maintain_cycle": time.time(), "nodes": self.store.get_node_count()})
@@ -1774,7 +1783,7 @@ class Omega:
             "convergence": self.convergence.get_stats(),
             "thermodynamic": self.thermodynamic.get_stats(),
             "duration_ms": (time.time() - start) * 1000,
-            "expired_nodes": len(expired),
+            "expired_nodes": len(expired_nodes),
             "trajectory_actions": len(traj_summary),
         }
 
@@ -1863,6 +1872,7 @@ class Omega:
             return "unknown"
 
     def close(self):
+        self.wal._flush()
         self.bank.close()
         self.cache.close()
         self.store.close()

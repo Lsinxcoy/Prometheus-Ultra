@@ -104,14 +104,21 @@ class DreamCycle:
         if len(memories) < 3:
             return patterns
 
+        import math
         word_docs: Counter = Counter()
         word_pairs: Counter = Counter()
+        word_freq: Counter = Counter()
+        total_words = 0
 
         for mem in memories:
-            words = set(w.lower() for w in mem.get("content", "").split() if len(w) > 3)
-            for w in words:
+            words = [w.lower() for w in mem.get("content", "").split() if len(w) > 3]
+            unique_words = set(words)
+            for w in unique_words:
                 word_docs[w] += 1
-            wl = sorted(words)
+            for w in words:
+                word_freq[w] += 1
+                total_words += 1
+            wl = sorted(unique_words)
             for i in range(len(wl)):
                 for j in range(i + 1, min(i + 5, len(wl))):
                     word_pairs[(wl[i], wl[j])] += 1
@@ -122,10 +129,26 @@ class DreamCycle:
                 p1 = word_docs[w1] / total
                 p2 = word_docs[w2] / total
                 p_co = count / total
+
                 if p1 * p2 > 0:
-                    pmi = p_co / (p1 * p2)
-                    if pmi > 1.0:
-                        patterns.append({"pair": (w1, w2), "pmi": pmi, "count": count})
+                    pmi = math.log2(p_co / (p1 * p2) + 1e-10)
+
+                    # TF-IDF weighting
+                    tf1 = word_freq.get(w1, 0) / max(total_words, 1)
+                    tf2 = word_freq.get(w2, 0) / max(total_words, 1)
+                    idf1 = math.log(max(1, total) / max(1, word_docs.get(w1, 1)))
+                    idf2 = math.log(max(1, total) / max(1, word_docs.get(w2, 1)))
+                    tfidf_weight = (tf1 * idf1 + tf2 * idf2) / 2
+
+                    # Weighted PMI
+                    weighted_pmi = pmi * (0.5 + tfidf_weight)
+
+                    if weighted_pmi > 0.5:
+                        patterns.append({
+                            "pair": (w1, w2), "pmi": pmi,
+                            "weighted_pmi": weighted_pmi,
+                            "count": count,
+                        })
 
         return patterns
 
