@@ -85,6 +85,14 @@ from prometheus_ultra.loop.debate import DebateEngine
 from prometheus_ultra.loop.info_gain import InformationGainTracker
 from prometheus_ultra.loop.agent_forest import AgentForest
 from prometheus_ultra.loop.dynamic_scaler import DynamicScaler
+from prometheus_ultra.loop.brainstorming_engine import BrainstormingEngine
+from prometheus_ultra.loop.systematic_debugging import SystematicDebuggingEngine
+from prometheus_ultra.loop.tdd_verifier import TDDVerifier
+from prometheus_ultra.loop.plan_writer import PlanWriter
+from prometheus_ultra.loop.verification_gate import VerificationGate
+from prometheus_ultra.loop.parallel_dispatcher import ParallelDispatcher
+from prometheus_ultra.loop.plan_executor import PlanExecutor
+from prometheus_ultra.loop.code_reviewer import CodeReviewer
 
 # Prompt
 from prometheus_ultra.prompt.cot import CoTPrompter
@@ -278,6 +286,7 @@ class Omega:
         self.zscore = ZScoreAnomaly()
         self.trend = TrendPredictor()
         self.self_healing = SelfHealingEngine()
+        # Will be wired up after Loop mechanisms are initialized
 
         # ===== Learning (5) =====
         self.knowledge_scanner = KnowledgeScanner()
@@ -293,13 +302,24 @@ class Omega:
         self.harness_x = HarnessX()
         self.bootstrap = BootstrapCI()
 
-        # ===== Loop (6) =====
+        # ===== Loop (14) =====
         self.reflexion = ReflexionEngine()
         self.coala = CoALAArchitecture()
         self.debate = DebateEngine()
         self.info_gain = InformationGainTracker()
         self.agent_forest = AgentForest()
         self.dynamic_scaler = DynamicScaler()
+        self.brainstorming = BrainstormingEngine()
+        self.systematic_debugging = SystematicDebuggingEngine()
+        self.tdd_verifier = TDDVerifier()
+        self.plan_writer = PlanWriter()
+        self.verification_gate = VerificationGate()
+        self.parallel_dispatcher = ParallelDispatcher()
+        self.plan_executor = PlanExecutor()
+        self.code_reviewer = CodeReviewer()
+
+        # Wire systematic debugging to self_healing
+        self.self_healing.set_debugger(self.systematic_debugging)
 
         # ===== Prompt (6) =====
         self.cot = CoTPrompter()
@@ -885,10 +905,15 @@ class Omega:
         return SearchResults(hits=unique, total_count=len(unique), query=query, duration_ms=duration)
 
     # ============================================================
-    # evolve pipeline (10 stages)
+    # evolve pipeline (11 stages — Superpowers enhanced)
     # ============================================================
     def evolve(self, context: str = "", branch: str = "main") -> EvolutionOutcome:
         start = time.time()
+
+        # Stage 0: Brainstorming — Socratic design refinement (Superpowers)
+        brainstorm_result = self.brainstorming.brainstorm(
+            topic=context or "auto-evolution", context="evolve pipeline"
+        )
 
         # LoopSelector: auto-select loop strategy
         loop_config = self.loop_selector.select(context)
@@ -1027,8 +1052,22 @@ class Omega:
         self.evolution_engine.evolve(context)
         fitness_after = self._compute_fitness()
 
+        # Verification Gate — ensure evolution is actually beneficial (Superpowers)
+        delta = fitness_after - fitness_before
+        verification = self.verification_gate.verify(
+            task="evolve_%s" % context,
+            fix_applied="fitness_delta=%.4f" % delta,
+            tests_passing=delta >= -0.01,
+        )
+
+        # TDD Verifier — verify test coverage (Superpowers)
+        tdd_result = self.tdd_verifier.verify(
+            feature="evolution_%s" % context,
+            test_description="evolution produces measurable improvement",
+        )
+
         # Reflexion
-        self.reflexion.reflect(context or "evolve", f"delta={fitness_after - fitness_before:.4f}", fitness_after)
+        self.reflexion.reflect(context or "evolve", f"delta={delta:.4f}", fitness_after)
 
         # Debate
         self.debate.debate(context or "evolution", [f"before={fitness_before:.4f}", f"after={fitness_after:.4f}"])

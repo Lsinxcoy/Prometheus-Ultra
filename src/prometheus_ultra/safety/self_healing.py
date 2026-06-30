@@ -19,6 +19,10 @@ class SelfHealingEngine:
             "unknown": "restart",
         }
         self._actions_executed: list[dict] = []
+        self._systematic_debugging = None
+
+    def set_debugger(self, debugger):
+        self._systematic_debugging = debugger
 
     def diagnose(self, context: dict | None = None) -> dict:
         ctx = context or {}
@@ -49,6 +53,19 @@ class SelfHealingEngine:
 
     def heal(self, context: dict | None = None) -> dict:
         diagnosis = self.diagnose(context)
+
+        # Systematic debugging — 4-phase root cause analysis (Superpowers)
+        if self._systematic_debugging:
+            debug_result = self._systematic_debugging.debug(
+                symptom=diagnosis["primary_cause"],
+                context=context,
+            )
+            diagnosis["debug_result"] = {
+                "root_cause": debug_result.root_cause,
+                "confidence": debug_result.confidence,
+                "verified": debug_result.verified,
+            }
+
         actions = self._execute_recovery(diagnosis, context or {})
         result = {
             "healed": len(actions) > 0,
