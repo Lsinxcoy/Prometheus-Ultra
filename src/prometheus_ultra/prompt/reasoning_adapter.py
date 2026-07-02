@@ -9,6 +9,10 @@ Key Concepts:
     4. Focus on what to solve, not how to solve it
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import re
 from dataclasses import dataclass, field

@@ -28,6 +28,10 @@ Complexity:
     merge_operations(): O(N) for semantic merge
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import hashlib
 import math

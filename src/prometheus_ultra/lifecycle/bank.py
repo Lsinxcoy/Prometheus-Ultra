@@ -51,6 +51,10 @@ Edge Cases:
     - Very old items in tier 6: pruned completely
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field

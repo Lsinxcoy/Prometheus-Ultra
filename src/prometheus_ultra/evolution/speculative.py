@@ -6,6 +6,10 @@ Instead of random fitness, uses a pluggable evaluator function.
 The structure follows ToT: fork → evaluate → select → promote/rollback.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import random
 import time
 from typing import Callable

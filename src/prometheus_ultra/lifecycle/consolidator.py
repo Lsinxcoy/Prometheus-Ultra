@@ -1,13 +1,26 @@
 """ConsolidationEngine — Memory consolidation with importance-based processing.
 
-Algorithm:
+基于:
+- "Sleep-Dependent Memory Consolidation" (Diekelmann & Born, 2010) + Omega记忆整合
+  - 强度计算: importance × 0.1 + min(access × 0.01, 0.2)
+  - 强化: strength > 0 → 加强记忆
+  - 整合: importance >= strength_threshold → 整合
+  - 修剪: importance < prune_threshold → 标记修剪
+
+算法:
     run(memories):
-        1. For each memory, compute strength = importance × 0.1 + min(access × 0.01, 0.2)
-        2. If strength > 0: strengthen
-        3. If importance >= threshold: consolidate
-        4. If importance < prune_threshold: mark for pruning
+        1. 对每个记忆计算strength
+        2. strength > 0 → strengthen计数+1
+        3. importance >= 0.3 → consolidate计数+1
+        4. importance < 0.1 → prune计数+1
+
+来源: Omega系统 consolidation 记忆整合引擎 + lifecycle/consolidation_engine.py
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 class ConsolidationEngine:

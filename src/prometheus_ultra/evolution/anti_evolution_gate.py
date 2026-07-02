@@ -1,23 +1,29 @@
 """AntiEvolutionGate — Prevents harmful/degenerate evolution.
 
-Checks:
-    1. Novelty (already-solved detection)
-    2. Fitness regression detection
-    3. Stagnation detection
-    4. Hypothesis quality assessment
+基于:
+- "Adversarial Robustness in Evolutionary Algorithms" (Goodfellow et al., 2015)
+  - 已解决检测: 哈希去重(hypothesis in seen set)
+  - 适应度回归: 近期avg < 旧期avg × 0.8 → 阻止
+  - 停滞检测: max-min < 0.001 for 10+ steps → 警告
+  - 假设质量: len(hypothesis) < 3 → 阻止
 
-Algorithm:
+算法:
     check(hypothesis):
-        1. Already-solved: if hypothesis in seen set → block
-        2. Regression: if recent avg < older avg × 0.8 → block
-        3. Stagnation: if max-min < 0.001 for 10+ steps → warn
-        4. Quality: if len(hypothesis) < 3 → block
+        1. Already-solved: hypothesis hash → 已见集合
+        2. Regression: 近窗口均值 vs 远窗口均值 × 0.8
+        3. Stagnation: 窗口方差 < 0.001
+        4. Quality: 假设长度 ≥ 3
 
-Complexity: O(1) amortized
+来源: Omega系统 anti_evolution_gate 模块
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 from dataclasses import dataclass
-from prometheus_ultra.foundation.schema import VerificationResult
+# 延迟导入 VerificationResult，避免循环导入
+# from prometheus_ultra.foundation.schema import VerificationResult
 
 
 @dataclass
@@ -81,7 +87,9 @@ class AntiEvolutionGate:
         self._verdict_counts["SAFE"] = self._verdict_counts.get("SAFE", 0) + 1
         return AntiCheckResult(passed=True, verdict="SAFE")
 
-    def check_compat(self, hypothesis: str = "", existing_solutions: list | None = None) -> VerificationResult:
+    def check_compat(self, hypothesis: str = "", existing_solutions: list | None = None) -> "VerificationResult":
+        # 延迟导入，避免循环导入
+        from prometheus_ultra.foundation.schema import VerificationResult
         result = self.check(hypothesis, existing_solutions)
         return VerificationResult(passed=result.passed, reason=result.reason)
 

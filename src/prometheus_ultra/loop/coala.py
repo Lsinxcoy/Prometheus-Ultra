@@ -22,6 +22,10 @@ Algorithm:
     - Retrieval: query LTM based on current context
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field
@@ -96,7 +100,7 @@ class CoALAArchitecture:
 
         # Consolidate if over capacity
         if len(self._working_memory) > self._wm_size:
-            self._working_memory.sort(key=lambda x: x.attention)
+            self._working_memory.sort(key=lambda x: getattr(x, 'attention', x.get('attention', 0.5) if isinstance(x, dict) else 0.5))
             evicted = self._working_memory.pop(0)
             self._long_term_memory.append(evicted)
             self._consolidations += 1
@@ -130,7 +134,11 @@ class CoALAArchitecture:
         doc_count = len(self._long_term_memory)
         word_doc_freq: dict[str, int] = {}
         for item in self._long_term_memory:
-            content_words = set(item.content.lower().split())
+            # 兼容 dict / MemoryItem
+            if isinstance(item, dict):
+                content_words = set(item.get("content", "").lower().split())
+            else:
+                content_words = set(item.content.lower().split())
             for w in query_words:
                 if w in content_words:
                     word_doc_freq[w] = word_doc_freq.get(w, 0) + 1
@@ -143,8 +151,17 @@ class CoALAArchitecture:
         scored = []
         current_time = time.time()
         for item in self._long_term_memory:
-            content_lower = item.content.lower()
-            content_words = set(content_lower.split())
+            # 兼容 dict / MemoryItem
+            if isinstance(item, dict):
+                content_lower = item.get("content", "").lower()
+                content_words = set(content_lower.split())
+                importance = item.get("importance", 0.5)
+                timestamp = item.get("timestamp", current_time)
+            else:
+                content_lower = item.content.lower()
+                content_words = set(content_lower.split())
+                importance = item.importance
+                timestamp = item.timestamp
 
             # TF-IDF score
             score = 0.0
@@ -164,12 +181,12 @@ class CoALAArchitecture:
                     score += 0.5
 
             # Recency decay (exponential)
-            age_hours = (current_time - item.timestamp) / 3600
+            age_hours = (current_time - timestamp) / 3600
             recency = math.exp(-age_hours / 168)  # 1-week half-life
             score *= (0.7 + 0.3 * recency)
 
             # Importance boost
-            score *= (0.5 + item.importance * 0.5)
+            score *= (0.5 + importance * 0.5)
 
             if score > 0.01:
                 scored.append((score, item))
@@ -177,14 +194,31 @@ class CoALAArchitecture:
         scored.sort(key=lambda x: x[0], reverse=True)
         self._total_retrieved += min(top_k, len(scored))
 
-        return [{"content": item.content, "score": score, "importance": item.importance}
-                for score, item in scored[:top_k]]
+        result = []
+        for score, item in scored[:top_k]:
+            if isinstance(item, dict):
+                result.append({"content": item.get("content", ""), "score": score, "importance": item.get("importance", 0.5)})
+            else:
+                result.append({"content": item.content, "score": score, "importance": item.importance})
+        return result
 
     def get_working_memory_contents(self) -> list[dict]:
         """Get current working memory contents."""
-        return [{"content": item.content, "attention": item.attention,
-                 "importance": item.importance}
-                for item in self._working_memory]
+        result = []
+        for item in self._working_memory:
+            if isinstance(item, dict):
+                result.append({
+                    "content": item.get("content", ""),
+                    "attention": item.get("attention", item.get("utility", 0.5)),
+                    "importance": item.get("importance", 0.5),
+                })
+            else:
+                result.append({
+                    "content": item.content,
+                    "attention": item.attention,
+                    "importance": item.importance,
+                })
+        return result
 
     def get_ltm_size(self) -> int:
         """Get long-term memory size."""

@@ -4,6 +4,10 @@ Based on: Biological cognitive architecture metaphor.
 Each organ performs real transformations on the data flowing through.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import time
 import re
 

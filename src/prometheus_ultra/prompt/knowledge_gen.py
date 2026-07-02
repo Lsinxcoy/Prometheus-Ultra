@@ -10,6 +10,10 @@ Enhanced extraction with:
     4. Domain-specific knowledge patterns
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import re
 from dataclasses import dataclass, field

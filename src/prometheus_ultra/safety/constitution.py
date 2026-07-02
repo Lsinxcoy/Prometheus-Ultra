@@ -1,14 +1,25 @@
 """Constitution — 22-principle governance constitution with semantic review.
 
-Enhanced with:
-- Semantic pattern detection (not just regex)
-- Behavioral pattern analysis
-- Dynamic rule scoring
+基于:
+- Amodei et al. (2016) "Concrete Problems in AI Safety" + 宪法AI框架 (Bai et al., 2022)
+  - 22条规则分层治理: S级(安全), A级(完整性), B级(溯源), C级(审计), D级(性能)
+  - S级不可违反: 无害/无密钥/无自修改/无全删/无操纵 (5条红线)
+  - A级完整性: 效用下限/惊喜上限/内容必填/标签格式/类型合法
+  - B级溯源: 来源已知/置信度有效/分支存在/无循环引用/版本单调
+  - 语义审查: 词汇多样性检测(防重复攻击)/感叹号检测(防过度强调)
+  - 正则模式匹配: SECRET/HARM/SELFMODIFY/DELETEALL/MANIPULATION 五类危害检测
+
+来源: Omega系统 constitution 22原则治理宪法模块 + AI安全框架
 """
 from __future__ import annotations
 
+
+
+import logging
+
 import re
 from dataclasses import dataclass
+logger = logging.getLogger(__name__)
 
 
 _SECRET_PATTERNS = [
@@ -110,11 +121,12 @@ class Constitution:
                         reason=f"Rule {rule['name']} violated",
                         severity=severity,
                     ))
-            except Exception:
+            except Exception as e:
+                logger.warning("Constitution rule check failed for %s: %s", rule.get("name", "unknown"), e)
                 violations.append(ConstitutionViolation(
                     passed=False,
                     gate_name=rule["name"],
-                    reason=f"Rule {rule['name']} check failed",
+                    reason=f"Rule {rule['name']} check failed: {e}",
                     severity="low",
                 ))
 

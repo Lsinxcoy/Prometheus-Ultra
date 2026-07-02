@@ -1,9 +1,25 @@
 """CommunityTree — Community-based skill organization with real graph algorithms.
 
-Uses Louvain-style community detection (greedy modularity optimization)
-instead of naive DFS traversal.
+基于:
+- Blondel et al. (2008) "Fast Unfolding of Community Structure in Large Networks" (Louvain方法)
+  - 模块化优化: 贪婪模量优化, 逐节点尝试移至邻居社区
+  - modularity_gain: ΔQ = (σ_in/m2) - (σ_tot×k_i)/(2×m2²)
+  - Jaccard相似度: 节点间边权重基于属性重叠度
+  - 社区检测迭代: 直到无模块增益改进
+
+算法:
+    find_communities():
+        1. 每节点初始为独立社区
+        2. 对每节点: 计算移至邻居社区的modularity_gain
+        3. 增益>0 → 移动, 重复直到收敛
+
+来源: Omega系统 community_tree 社区检测技能组织模块 + Louvain算法
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import math
 from collections import defaultdict

@@ -20,6 +20,10 @@ Algorithm:
     4. Confidence = agreement ratio
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import math
 from collections import Counter

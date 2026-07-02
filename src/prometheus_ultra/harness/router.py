@@ -1,10 +1,25 @@
 """ModelRouter — Model selection based on query complexity and tool load.
 
-Enhanced with tool count management from:
-- "Tool Overload: Small Model Performance with Many Tools" (2024)
-- Berkeley Function-Calling Leaderboard
+基于:
+- "Tool Overload: Small Model Performance with Many Tools" (2024) + Berkeley FC Leaderboard
+  - 复杂度估计: 长度(40%)+技术词(40%)+问号(20%)
+  - 工具惩罚: tool_count>10时线性惩罚
+  - 路由评分: (max_tokens/cost) × (0.5+complexity×0.5) × (1-tool_penalty)
+  - 约束过滤: cost/latency/capabilities/tool_count
+
+算法:
+    route(query, constraints):
+        1. 估计查询复杂度(0-1)
+        2. 对每个模型: 检查约束→计算工具惩罚→评分
+        3. 选择评分最高的模型
+
+来源: Omega系统 router 模型路由模块 + Berkeley Function-Calling Leaderboard
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 from dataclasses import dataclass, field
 

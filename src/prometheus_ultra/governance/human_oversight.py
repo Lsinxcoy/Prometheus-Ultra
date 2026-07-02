@@ -15,6 +15,10 @@ Algorithm:
     4. Log all decisions for audit
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field

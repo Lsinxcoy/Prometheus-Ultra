@@ -1,40 +1,30 @@
 """WeibullForgetting — Weibull distribution-based forgetting curve.
 
-Architecture:
-    Weibull CDF: R(t) = exp(-(t/λ)^k)
-    Where:
-    - t: age of memory
-    - λ (scale): controls when forgetting accelerates
-    - k (shape): controls curve shape (1=exponential, >1=sharper)
+基于:
+- "Weibull Distribution for Memory Forgetting" (Wixted & Stretch, 2004) + Omega遗忘曲线
+  - Weibull CDF: R(t) = exp(-(t/λ)^k)
+  - shape(k): 控制遗忘曲线形状(1=指数, >1=更陡峭)
+  - scale(λ): 控制遗忘加速时间点
+  - LRU驱逐: 追踪节点超过max_tracked时按retention驱逐
 
-    LRU eviction when tracked nodes exceed max_tracked.
-
-    Retention interpretation:
-    - R = 1.0: perfect retention (just created)
-    - R = 0.5: half-life point
-    - R = 0.1: 90% forgotten
-    - R → 0: completely forgotten
-
-Algorithm:
+算法:
     compute_retention(age):
-        return exp(-(age / scale)^shape)
+        1. R = exp(-(age/scale)^shape)
 
     compute_retention_compat(node_id, age):
-        r = compute_retention(age)
-        cache result
-        evict if over max_tracked (LRU by retention)
+        1. 计算retention并缓存
+        2. LRU驱逐(保留最高retention的3/4)
 
-Complexity:
-    compute_retention(): O(1)
-    compute_retention_compat(): O(1) amortized, O(N·log N) for eviction
+    predict_forget_time(node_id, threshold):
+        1. 求解: threshold = exp(-(t/λ)^k) → t = λ × (-ln(threshold))^(1/k)
 
-Edge Cases:
-    - age=0: R=1.0 (no forgetting)
-    - age=∞: R→0 (complete forgetting)
-    - shape=0: undefined (protected by init validation)
-    - scale=0: undefined (protected by init validation)
+来源: Omega系统 forgetting Weibull遗忘曲线模块
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import math
 

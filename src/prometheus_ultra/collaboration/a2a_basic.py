@@ -11,6 +11,10 @@ A2A provides:
     - Asynchronous task delegation
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import time
 from dataclasses import dataclass, field
 from enum import Enum

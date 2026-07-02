@@ -1,5 +1,6 @@
 from prometheus_ultra.learning.scanner import KnowledgeScanner, ScanSource
-from prometheus_ultra.learning.curiosity import CuriosityQueue
+from prometheus_ultra.learning.curiosity import Curiosity, CuriosityQueue
 from prometheus_ultra.learning.utility_tracker import UtilityTracker
 from prometheus_ultra.learning.five_step import FiveStepEvolution
 from prometheus_ultra.learning.deep_retrofit import DeepRetrofit
+from prometheus_ultra.learning.knowledge_scanner import KnowledgeScanner as MultiSourceKnowledgeScanner

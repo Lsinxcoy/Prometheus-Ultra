@@ -3,6 +3,10 @@
 Implements: dimensionality reduction, pattern mining, feature scoring.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 from collections import Counter
 
 

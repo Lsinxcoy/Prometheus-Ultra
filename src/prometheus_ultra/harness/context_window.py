@@ -14,6 +14,10 @@ Algorithm:
     4. Priority-based eviction: keep high-value content
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 from dataclasses import dataclass, field
 

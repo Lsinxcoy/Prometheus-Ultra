@@ -5,6 +5,10 @@ Tracks utility values over time with time-based decay and
 reference-based boosting.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import time
 
 

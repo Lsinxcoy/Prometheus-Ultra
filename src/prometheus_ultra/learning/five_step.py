@@ -1,8 +1,20 @@
 """FiveStepEvolution — five-step evolution with real processing per step.
 
-Steps: scan → evaluate → mutate → validate → integrate
+基于:
+- Mitchell (1996) "Machine Learning" + Omega五步进化管道
+  - 扫描(scan): 关键词提取 + 相关知识点召回 + 关键短语识别(3-gram)
+  - 评估(evaluate): 复合评分 = keyword×0.4 + knowledge×0.3 + phrase×0.3
+  - 变异(mutate): 关键词扩展/参数调整/结构变异 (Gaussian扰动)
+  - 验证(validate): 按变异类型阈值过滤(delta>0.02/0.03/0.04), confidence排序取Top-5
+  - 集成(integrate): confidence>0.3的变异才应用, 记录mutation_history
+
+来源: Omega系统 five_step 五步进化模块 + 机器学习进化管道
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import random
 import re
 

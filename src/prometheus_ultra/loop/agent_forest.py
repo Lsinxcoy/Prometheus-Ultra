@@ -16,6 +16,10 @@ Algorithm:
     5. Track voting accuracy for agent ranking
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from collections import Counter

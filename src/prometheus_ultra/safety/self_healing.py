@@ -1,8 +1,30 @@
 """SelfHealingEngine — Automated fault diagnosis and recovery.
 
-Diagnoses system faults from symptoms and executes recovery actions.
+基于:
+- "Self-Healing Systems for Cloud Computing" (Chapman et al., 2008) + Superpowers systematic debugging
+  - 症状检测: memory_leak/deadlock/resource_exhaustion/data_corruption/performance_degradation
+  - 恢复策略映射: restart_with_gc/circuit_break/scale_up/rollback/optimize
+  - 系统性调试: 4-phase root cause analysis
+
+算法:
+    diagnose(context):
+        1. 检查6个症状条件
+        2. 确定primary_cause
+        3. 返回recovery_strategy
+
+    heal(context):
+        1. diagnose()获取故障类型
+        2. 执行_systematic_debugging(可选)
+        3. _execute_recovery()执行恢复动作
+        4. 记录healing历史
+
+来源: Omega系统 self_healing + Superpowers systematic-debugging skill
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import time
 
 

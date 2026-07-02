@@ -32,10 +32,15 @@ Complexity:
 """
 from __future__ import annotations
 
+
+
+import logging
+
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -161,8 +166,8 @@ class ContextEngineering:
                         tokens=len(r.content.split()) * 2,
                         metadata={"source": "memory", "score": r.score},
                     ))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("ContextEngineering memory recall failed: %s", e)
 
         # Try to retrieve from graph memory if available
         if storage and hasattr(storage, 'search'):
@@ -178,8 +183,8 @@ class ContextEngineering:
                         tokens=len(content.split()) * 2,
                         metadata={"source": "graph"},
                     ))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("ContextEngineering graph search failed: %s", e)
 
         # Sort by priority and limit
         results.sort(key=lambda c: c.priority)

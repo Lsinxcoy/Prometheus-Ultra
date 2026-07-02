@@ -4,6 +4,10 @@ Based on: obra/superpowers writing-plans skill
 Key insight: Break work into 2-5 minute tasks with exact file paths and verification steps.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field

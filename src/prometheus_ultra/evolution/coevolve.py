@@ -4,6 +4,10 @@ Based on: Red Queen hypothesis in evolutionary biology.
 Co-evolving populations drive each other's fitness landscape.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import random
 import math
 

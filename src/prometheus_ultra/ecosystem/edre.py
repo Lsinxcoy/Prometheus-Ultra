@@ -13,6 +13,10 @@ Where:
 Uses RK4 integration for ODE stability.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import math
 
 

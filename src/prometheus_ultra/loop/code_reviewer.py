@@ -4,6 +4,10 @@ Based on: obra/superpowers requesting-code-review + receiving-code-review skills
 Key insight: Review against plan, report issues by severity, critical issues block.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field

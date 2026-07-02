@@ -1,36 +1,25 @@
 """MemoryStream — Real-time memory event stream with windowing.
 
-Architecture:
-    Append-only log with timestamp and event type.
-    Sliding window truncation for memory efficiency.
-    Event type filtering and counting.
-    Recent N retrieval with optional type filter.
+基于:
+- Kleppmann (2017) Designing Data-Intensive Applications: 不可变日志 + 滑动窗口
+  - 追加日志: 事件按时间戳顺序追加, 不可修改
+  - 滑动窗口: max_size限制, 超限时头部截断并同步更新计数器
+  - 事件类型过滤: 按event_type快速检索, 支持recent(n, type)
+  - 重要性聚合: total_importance累加, 支持avg_importance统计
 
-Algorithm:
+算法:
     add(event_type, content, importance):
-        1. Create StreamEvent with timestamp
-        2. Append to stream
-        3. Update type counts
-        4. Truncate if over max_size
+        1. 创建StreamEvent(含时间戳)
+        2. 追加到stream, 更新type_counts
+        3. 超过max_size→截断头部, 同步修正计数器
 
-    recent(n, event_type):
-        1. Filter by event_type if specified
-        2. Return last N events
-
-    get_count(event_type):
-        Return count for specific type or total
-
-Complexity:
-    add(): O(1) amortized
-    recent(): O(n) where n = requested count
-    get_count(): O(1)
-
-Edge Cases:
-    - Empty stream: returns empty list
-    - Very large stream: truncated to max_size
-    - Unknown event type: returns 0 count
+来源: Omega系统 memory stream 实时记忆流模块 + 数据密集型应用设计
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field
@@ -92,9 +81,10 @@ class MemoryStream:
 
         # Window truncation
         if len(self._stream) > self._max_size:
-            removed = self._stream[-self._max_size // 2:]
-            self._stream = self._stream[-self._max_size // 2:]
+            removed = self._stream[:len(self._stream) - self._max_size]
+            self._stream = self._stream[-self._max_size:]
             for r in removed:
+                self._type_counts[r.event_type] = self._type_counts.get(r.event_type, 0) - 1
                 self._total_importance -= r.importance
 
     def recent(self, n: int = 10, event_type: str | None = None) -> list[dict]:

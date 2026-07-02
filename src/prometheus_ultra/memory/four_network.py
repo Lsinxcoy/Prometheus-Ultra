@@ -18,9 +18,15 @@ Enhancement:
     - Added importance-based memory prioritization
     - Added reflection synthesis capability
 """
+
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import math
+import time
 from collections import defaultdict
 
 
@@ -188,6 +194,3 @@ class FourNetworkMemory:
             "total": self._total_retained,
             "unique_tags": len(self._tag_index),
         }
-
-
-import time

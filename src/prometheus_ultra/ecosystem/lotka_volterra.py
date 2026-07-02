@@ -8,6 +8,10 @@ Uses 4th-order Runge-Kutta for numerical stability (not bare Euler).
 Supports multi-species chain predation.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import copy
 
 

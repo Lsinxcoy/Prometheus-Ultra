@@ -19,6 +19,10 @@ Algorithm:
     4. Synthesize final answer
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import re
 

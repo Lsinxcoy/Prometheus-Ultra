@@ -57,6 +57,10 @@ from prometheus_ultra.evolution.dag_scheduler import DAGScheduler
 from prometheus_ultra.evolution.coevolve import CoEvolution
 from prometheus_ultra.evolution.speculative import SpeculativeEvolution
 from prometheus_ultra.evolution.evolution_engine import EvolutionEngine
+from prometheus_ultra.evolution.pass_k import PassKConsistency
+from prometheus_ultra.evolution.strategies import MultiStrategyScheduler
+from prometheus_ultra.evolution.evolution_quality_gates import EvolutionQualityGates
+from prometheus_ultra.safety.trace_engine import TraceEngine
 
 # Safety
 from prometheus_ultra.safety.instincts import InstinctsRegistry, register_default_instincts
@@ -200,7 +204,7 @@ from prometheus_ultra.safety.capability_ceiling import CapabilityCeiling
 from prometheus_ultra.safety.cognitive_collapse import CognitiveCollapse
 from prometheus_ultra.loop.semantic_early_stopping import SemanticEarlyStopping
 from prometheus_ultra.lifecycle.evaf_consolidation import EVAFConsolidation
-from prometheus_ultra.collaboration.a2a_basic import A2ABasic
+from prometheus_ultra.collaboration.a2a_basic import A2ABasic, AgentCapability
 from prometheus_ultra.lifecycle.local_maintenance import LocalMaintenance
 from prometheus_ultra.memory.memory_depth import MemoryDepthTracker
 from prometheus_ultra.evolution.everos import EverOS
@@ -229,6 +233,9 @@ class Omega:
         if db_path:
             self._cfg.database_path = db_path
         self._start_time = time.time()
+
+        # Learned config: persistent parameter adjustments from knowledge learning
+        self._learned_config: dict[str, float] = {}
 
         # ===== Foundation (1) =====
         self.store = MinervaStore(self._cfg)
@@ -271,7 +278,11 @@ class Omega:
         self.dag_scheduler = DAGScheduler()
         self.coevolve = CoEvolution()
         self.speculative = SpeculativeEvolution()
-        self.evolution_engine = EvolutionEngine(eval_fn=lambda c: self._compute_fitness())
+        self.evolution_engine = EvolutionEngine(evaluate_fn=lambda c: self._compute_fitness())
+        # Swiss Army Knife modules (2026-07-01)
+        self.pass_k = PassKConsistency()
+        self.strategy_scheduler = MultiStrategyScheduler(["gepa", "everos", "memento", "openspace", "ga"])
+        self.trace_engine = TraceEngine()
 
         # ===== Safety (11) =====
         self.instincts = InstinctsRegistry()
@@ -350,6 +361,9 @@ class Omega:
         self.lotka_volterra = LotkaVolterra()
         self.speculative_fork = SpeculativeFork()
         self.tool_fitness = ToolFitnessPredictor()
+        # Swiss Army Knife: full tool fitness evaluator (from evolution/)
+        from prometheus_ultra.evolution.tool_fitness import ToolFitness
+        self.tool_fitness_full = ToolFitness()
         self.community_tree = CommunityTree()
         self.edre = EDREReplicator()
 
@@ -506,6 +520,13 @@ class Omega:
                  branch: str = "main") -> str:
         tags = tags or []
         surprise = max(0.3, utility * 0.6)
+        
+        # Handle non-string content
+        if not isinstance(content, str):
+            content = str(content)
+
+        # 收集 remember 管道数据
+        remember_data = {}
 
         # WAL: write-ahead log entry
         self.wal.write("remember", status="started", pending=["create_node"])
@@ -610,9 +631,9 @@ class Omega:
 
         # CoALA
         self.coala.add_to_working_memory({"id": node.id, "content": content[:100], "utility": utility})
-        _ = self.coala.get_working_memory_contents()
-        _ = self.coala.get_ltm_size()
-        _ = self.coala.retrieve_from_ltm(content[:50])
+        remember_data['coala_wm'] = self.coala.get_working_memory_contents()
+        remember_data['coala_ltm'] = self.coala.get_ltm_size()
+        remember_data['coala_ltm_retrieve'] = self.coala.retrieve_from_ltm(content[:50])
 
         # DriftDetector
         self.drift_detector.observe_semantic(utility)
@@ -646,7 +667,7 @@ class Omega:
         self.disposition.learn("remember_utility", utility)
         self.bridge.bridge(content, "memory", relationship="stored")
         self.vector_clock.increment()
-        _ = self.vector_clock.get_clock()
+        remember_data['vclock'] = self.vector_clock.get_clock()
         self.vector_clock.merge({"system": 1})
         self.event_bus.publish({"type": "remember", "node_id": node.id})
         self.x_adapter.adapt({"node_id": node.id, "content": content})
@@ -664,8 +685,8 @@ class Omega:
                     (node.id, "utility", utility, time.time())
                 )
                 self._conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to log utility feedback: %s", e)
 
         # ContextClash: check for conflicting information
         recent_nodes = self.store.get_active_nodes(limit=5)
@@ -689,47 +710,47 @@ class Omega:
                     (node.id, "DIRECT_OBSERVATION", "remember_pipeline", conf_level, "[]", time.time())
                 )
                 self._conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to log provenance: %s", e)
 
         # === Remember: full mechanism activation ===
         # Memory subsystem
         self.failure_log.log("remember", "success", {"node_id": node.id, "utility": utility})
         ep = self.graph_memory.get_episode(node.id)
-        _ = self.graph_memory.get_edges(node.id)
-        _ = self.graph_memory.get_neighbors(node.id)
+        remember_data['gm_edges'] = self.graph_memory.get_edges(node.id)
+        remember_data['gm_neighbors'] = self.graph_memory.get_neighbors(node.id)
         self.graph_memory.remove_episode(node.id) if False else None  # skip delete in remember
         self.forgetting.compute_retention(age=0.0)
         if existing:
             self.gravity.compute(node.id, existing[0].id)
         else:
             self.gravity.add_node(node.id, mass=utility)
-        _ = self.stream.recent(3)
-        _ = self.stream.get_count("remember")
-        _ = self.stream.get_type_distribution()
-        _ = self.stream.get_avg_importance()
-        _ = self.stream.search_content(content[:50])
-        _ = self.shmr.get_entity_stats()
-        _ = self.shmr.get_co_occurrence_stats()
+        remember_data['stream_recent'] = self.stream.recent(3)
+        remember_data['stream_count'] = self.stream.get_count("remember")
+        remember_data['stream_type_dist'] = self.stream.get_type_distribution()
+        remember_data['stream_avg_imp'] = self.stream.get_avg_importance()
+        remember_data['stream_search'] = self.stream.search_content(content[:50])
+        remember_data['shmr_entities'] = self.shmr.get_entity_stats()
+        remember_data['shmr_cooccur'] = self.shmr.get_co_occurrence_stats()
         self.bridge.find_cross_domain_concepts("memory", "memory")
-        _ = self.bridge.get_domain_stats("memory")
-        _ = self.bridge.get_transfer_matrix()
-        _ = self.bridge.get_domain_bridges("memory")
-        _ = self.bridge.transfer_score("memory", "memory")
+        remember_data['bridge_stats'] = self.bridge.get_domain_stats("memory")
+        remember_data['bridge_matrix'] = self.bridge.get_transfer_matrix()
+        remember_data['bridge_domains'] = self.bridge.get_domain_bridges("memory")
+        remember_data['bridge_xfer'] = self.bridge.transfer_score("memory", "memory")
         self.behavior_mirror.mirror("system", "remember", {"node_id": node.id})
         self.behavior_mirror.compute_profile("system")
-        _ = self.behavior_mirror.detect_deviation("system")
+        remember_data['behavior_deviation'] = self.behavior_mirror.detect_deviation("system")
         self.event_bus.subscribe("remember_events", lambda e: None)
-        _ = self.event_bus.get_recent(5)
-        _ = self.x_adapter.reverse_adapt({"node_id": node.id})
-        _ = self.y_adapter.get_tier_name(utility > 0.8 and 2 or 1)
+        remember_data['recent_events'] = self.event_bus.get_recent(5)
+        remember_data['x_reverse'] = self.x_adapter.reverse_adapt({"node_id": node.id})
+        remember_data['y_tier'] = self.y_adapter.get_tier_name(utility > 0.8 and 2 or 1)
         self.y_adapter.migrate_tier(node.id, 0, 1)
-        _ = self.monitor.get_uptime()
-        _ = self.monitor.get_health()
+        remember_data['uptime'] = self.monitor.get_uptime()
+        remember_data['health'] = self.monitor.get_health()
         self.instincts.register("custom_check", lambda ctx: True)
         self.consolidation.consolidate([{"content": content, "importance": utility}])
-        _ = self.dopamine.get_recent_decisions()
-        _ = self.dopamine.get_score_distribution()
+        remember_data['dopa_decisions'] = self.dopamine.get_recent_decisions()
+        remember_data['dopa_dist'] = self.dopamine.get_score_distribution()
 
         logger.info("Remembered: %s (confidence: %s)", node.id[:8], conf_level)
         return node.id
@@ -740,6 +761,7 @@ class Omega:
     def recall(self, query: str, limit: int = 10, branch: str = "main") -> SearchResults:
         start = time.time()
         all_hits: list[SearchHit] = []
+        recall_data = {}
 
         # Route 1: FTS
         fts_nodes = self.store.search(query, limit=limit * 2, branch=branch)
@@ -763,12 +785,24 @@ class Omega:
             all_hits.append(SearchHit(node_id="cache_%s" % query[:16], score=0.8, content=str(cached)))
 
         # Route 5: Polyphonic
-        _ = self.search.get_fusion_stats()
-        _ = self.search.get_route_stats()
+        recall_data['fusion_stats'] = self.search.get_fusion_stats()
+        recall_data['route_stats'] = self.search.get_route_stats()
         self.search.reset_stats()
         for r in self.search.search(query, store=self.store, graph_memory=self.graph_memory, limit=limit):
             all_hits.append(SearchHit(node_id=r.node_id, score=r.fused_score,
                                       content=r.content))
+
+        # Route 6: TopologicalRetrieval — 图拓扑感知召回
+        if self.topological_retrieval is not None:
+            try:
+                topo_hits = self.topological_retrieval.retrieve(query=query, graph=self.graph_memory, limit=5)
+                for hit in topo_hits:
+                    all_hits.append(SearchHit(
+                        node_id=f"topo_{hit.node_id}", score=min(1.0, hit.score * 1.05),
+                        content=hit.content, snippet=hit.content[:200],
+                    ))
+            except Exception as e:
+                logger.debug("Topological retrieval failed: %s", e)
 
         # Deduplicate + sort (cap scores to [0,1] for cross-route consistency)
         seen = set()
@@ -842,28 +876,28 @@ class Omega:
 
         # === Recall: full mechanism activation ===
         # Cache subsystem
-        _ = self.cache.contains(query)
-        _ = self.cache.get_entry_info(query)
+        recall_data['cache_has'] = self.cache.contains(query)
+        recall_data['cache_info'] = self.cache.get_entry_info(query)
         self.cache.cleanup_expired()
-        _ = self.cache.get_stats()
+        recall_data['cache_stats'] = self.cache.get_stats()
 
         # Graph memory deep queries
         for h in unique[:3]:
             if h.node_id:
-                _ = self.graph_memory.get_episode(h.node_id)
-                _ = self.graph_memory.get_edges(h.node_id)
-                _ = self.graph_memory.get_neighbors(h.node_id)
-        _ = self.graph_memory.get_episodes_by_tag("ai")
+                recall_data['gm_episode'] = self.graph_memory.get_episode(h.node_id)
+                recall_data['gm_edges'] = self.graph_memory.get_edges(h.node_id)
+                recall_data['gm_neighbors'] = self.graph_memory.get_neighbors(h.node_id)
+        recall_data['gm_by_tag'] = self.graph_memory.get_episodes_by_tag("ai")
 
         # Stream analysis
-        _ = self.stream.recent(5, "recall")
-        _ = self.stream.search_content(query)
+        recall_data['stream_recent'] = self.stream.recent(5, "recall")
+        recall_data['stream_search'] = self.stream.search_content(query)
 
         # Compression analysis
-        _ = self.compressor.compress_with_stats(query)
+        recall_data['compress_stats'] = self.compressor.compress_with_stats(query)
 
         # Model routing analysis
-        _ = self.model_router.suggest_model_for_tools(len(unique))
+        recall_data['model_suggest'] = self.model_router.suggest_model_for_tools(len(unique))
 
         # Session management
         self.session.access(f"recall_{int(time.time())}")
@@ -873,28 +907,28 @@ class Omega:
         self.behavior_mirror.mirror("system", "recall", {"query": query, "hits": len(unique)})
 
         # Event bus
-        _ = self.event_bus.get_recent(3)
+        recall_data['recent_events'] = self.event_bus.get_recent(3)
 
         # Memory side effect
         self.memory_side_effect.set_current_task(f"recall {query}")
         for h in unique[:3]:
             self.memory_side_effect.observe_retrieval(h.content[:100])
-        _ = self.memory_side_effect.detect()
+        recall_data['side_effect'] = self.memory_side_effect.detect()
 
         # Context isolator
         snap = self.context_isolator.create_snapshot(
             [h.content[:100] for h in unique[:3]], f"recall {query}"
         )
-        _ = self.context_isolator.merge(snap, [h.content[:50] for h in unique[:2]])
+        recall_data['ctx_merge'] = self.context_isolator.merge(snap, [h.content[:50] for h in unique[:2]])
 
         # Context window
         self.context_window.register_component("recall_results", len(unique) * 100, priority=7)
-        _ = self.context_window.check()
-        _ = self.context_window.suggest_compression()
+        recall_data['ctx_check'] = self.context_window.check()
+        recall_data['ctx_compress'] = self.context_window.suggest_compression()
         self.context_window.update_usage("recall_results", len(unique) * 80)
 
         # Progressive complexity
-        _ = self.progressive_complexity.assess(
+        recall_data['complexity'] = self.progressive_complexity.assess(
             f"recall {query}", context_tokens=len(unique) * 200, requires_tools=len(unique) > 5
         )
 
@@ -902,12 +936,12 @@ class Omega:
         for h in unique[:3]:
             self.output_guardrail.check(h.content)
 
-        return SearchResults(hits=unique, total_count=len(unique), query=query, duration_ms=duration)
+        return SearchResults(hits=unique, total_count=len(unique), query=query, duration_ms=duration, metadata=recall_data)
 
     # ============================================================
     # evolve pipeline (11 stages — Superpowers enhanced)
     # ============================================================
-    def evolve(self, context: str = "", branch: str = "main") -> EvolutionOutcome:
+    def evolve(self, context: str = "", branch: str = "main", confidence: float = 0.5) -> EvolutionOutcome:
         start = time.time()
 
         # Stage 0: Brainstorming — Socratic design refinement (Superpowers)
@@ -963,6 +997,7 @@ class Omega:
 
         # Step 3.5: Measure fitness before evolution
         fitness_before = self._compute_fitness()
+        diagnostics: Dict[str, Any] = {}
 
         # Step 4: RLPathology — observe() 内部已调用 detect_all()
         self.rl_pathology.observe(fitness_before, "evolve")
@@ -1040,7 +1075,7 @@ class Omega:
 
         # CommunityTree
         self.community_tree.add_child(None, {"context": context, "fitness": fitness_before})
-        _ = self.community_tree.find_communities()
+        diagnostics["communities"] = self.community_tree.find_communities()
 
         # EDRE
         self.edre.replicate({"context": context, "fitness": fitness_before})
@@ -1079,7 +1114,7 @@ class Omega:
         self.debate.debate(context or "evolution", [f"before={fitness_before:.4f}", f"after={fitness_after:.4f}"])
 
         # MultiAgent
-        self.multi_agent.register_agent(f"evolver_{int(time.time())}")
+        self.multi_agent.register_agent(f"evolver_{int(time.time())}", ["evolve"])
 
         # BootstrapCI
         self.bootstrap.compute([fitness_before, fitness_after])
@@ -1096,7 +1131,7 @@ class Omega:
 
         # AntiEvolution record
         self.anti_evolution.record_score(fitness_after)
-        _ = self.anti_evolution.check_compat(hypothesis=context or "auto-evolution")
+        diagnostics["anti_evolution_compat"] = self.anti_evolution.check_compat(hypothesis=context or "auto-evolution")
 
         # ToolOverload: record tool usage during evolution
         self.tool_overload.record_selection("evolve", success=True)
@@ -1112,7 +1147,7 @@ class Omega:
 
         # 5 Evolution Methods from EvoAgentBench
         # EverOS: search-oriented external memory evolution
-        everos_result = self.everos.evolve(context or "auto", context={"fitness": fitness_after})
+        everos_result = self.everos.evolve(context or "auto", initial_state={"fitness": fitness_after})
         # GEPA: gradient-guided parameter evolution
         gepa_result = self.gepa.evolve(context or "auto")
         # Memento: memory-driven method evolution
@@ -1122,78 +1157,113 @@ class Omega:
         # OpenSpace: open-space exploration
         os_result = self.openspace.evolve(context or "auto", current_fitness=fitness_after)
 
+        # Swiss Army Knife: Pass-k consistency verification
+        pk_result = self.pass_k.evaluate(
+            task="evolve_candidates",
+            evaluate_fn=lambda c: fitness_after > 0.5,
+        )
+
+        # Swiss Army Knife: Multi-strategy selection
+        strategy_names = ["gepa", "everos", "memento", "openspace", "ga"]
+        _get_improvement = lambda r: getattr(r, "improvement", getattr(r, "best_fitness", 0))
+        strategy_fitness = {
+            "gepa": _get_improvement(gepa_result),
+            "everos": _get_improvement(everos_result),
+            "memento": _get_improvement(memento_result),
+            "openspace": _get_improvement(os_result),
+            "ga": delta,
+        }
+        for name, f in strategy_fitness.items():
+            self.strategy_scheduler.update(arm_id=name, reward=f)
+        best_result = self.strategy_scheduler.select(strategy="best")
+        best_strategy = best_result.selected_arm if best_result.selected_arm else "gepa"
+
+        # Swiss Army Knife: Trace engine records evolution trace
+        trace_id = self.trace_engine.start_trace("evolve", {"fitness_before": fitness_before, "fitness_after": fitness_after})
+        self.trace_engine.record_step(
+            trace_id=trace_id,
+            step_id=1,
+            action="multi_strategy_evolve",
+            confidence=fitness_after,
+            result=f"best={best_strategy}, delta={delta:.4f}",
+            metadata={"best_strategy": best_strategy, "delta": delta},
+        )
+        diagnostics["trace_decision"] = self.trace_engine.decision_analysis(trace_id)
+
         # === Evolve: full mechanism activation ===
         # Safety mechanisms
-        _ = self.circuit_breaker.allow_request()
-        _ = self.circuit_breaker.get_state()
+        diagnostics["circuit_breaker_allow"] = self.circuit_breaker.allow_request()
+        diagnostics["circuit_breaker_state"] = self.circuit_breaker.get_state()
 
         # DAG scheduler deep operations
-        _ = self.dag_scheduler.topological_sort()
-        _ = self.dag_scheduler.schedule()
-        _ = self.dag_scheduler.critical_path()
+        diagnostics["dag_topo_sort"] = self.dag_scheduler.topological_sort()
+        self.dag_scheduler.schedule()
+        diagnostics["dag_critical_path"] = self.dag_scheduler.critical_path()
 
         # Evolution engine deep
-        _ = self.evolution_engine.evaluate()
+        diagnostics["evolution_eval"] = self.evolution_engine.evaluate()
 
         # Multi-agent deep operations
-        _ = self.multi_agent.allocate_task({"task": context, "required_capabilities": []})
-        _ = self.multi_agent.reach_consensus([{"value": "strategy_a"}, {"value": "strategy_b"}])
+        diagnostics["multi_agent_alloc"] = self.multi_agent.allocate_task({"task": context, "required_capabilities": []})
+        diagnostics["multi_agent_consensus"] = self.multi_agent.reach_consensus([{"value": "strategy_a"}, {"value": "strategy_b"}])
 
         # Reflexion deep operations
         self.reflexion.record_attempt(context or "evolve", fitness_after)
-        _ = self.reflexion.get_reflection_context(top_k=3, query=context)
-        _ = self.reflexion.get_worst_actions()
-        _ = self.reflexion.get_improvement_trend()
+        diagnostics["reflexion_context"] = self.reflexion.get_reflection_context(top_k=3, query=context)
+        diagnostics["reflexion_worst"] = self.reflexion.get_worst_actions()
+        diagnostics["reflexion_trend"] = self.reflexion.get_improvement_trend()
 
         # Marginal deep operations
         self.marginal.accumulate_batch(
             baseline_score=fitness_before,
             operations=[{"id": "evo_1", "type": "evolve", "content": context, "score": fitness_after}]
         )
-        _ = self.marginal.get_advantages()
-        _ = self.marginal.get_stable_operations()
-        _ = self.marginal.get_operation_history("evo_1")
-        _ = self.marginal.get_batch_comparison(1, 2)
+        diagnostics["marginal_advantages"] = self.marginal.get_advantages()
+        diagnostics["marginal_stable"] = self.marginal.get_stable_operations()
+        diagnostics["marginal_history"] = self.marginal.get_operation_history("evo_1")
+        diagnostics["marginal_batch"] = self.marginal.get_batch_comparison(1, 2)
 
         # SEAGym deep operations
         self.seagym.register_case({"context": context, "fitness": fitness_after})
         self.seagym.register_cases([{"context": context, "fitness": fitness_after, "split": "train", "expected": 0.5}])
-        _ = self.seagym.detect_overfitting()
-        _ = self.seagym.get_cost_analysis()
-        _ = self.seagym.get_transfer_analysis()
+        diagnostics["seagym_overfitting"] = self.seagym.detect_overfitting()
+        diagnostics["seagym_cost"] = self.seagym.get_cost_analysis()
+        diagnostics["seagym_transfer"] = self.seagym.get_transfer_analysis()
         self.seagym.save_snapshot(epoch=int(time.time()), metadata={"fitness": fitness_after})
         # _ = self.seagym.evaluate_all_splits()  # requires case data
 
         # Behavior mirror deep
         self.behavior_mirror.mirror("system", "evolve", {"fitness": fitness_after})
-        _ = self.behavior_mirror.compute_profile("system")
-        _ = self.behavior_mirror.detect_deviation("system")
+        diagnostics["behavior_profile"] = self.behavior_mirror.compute_profile("system")
+        diagnostics["behavior_deviation"] = self.behavior_mirror.detect_deviation("system")
 
         # Event bus
-        _ = self.event_bus.get_recent(3)
+        diagnostics["event_bus_recent"] = self.event_bus.get_recent(3)
 
         # Trend prediction
-        _ = self.trend.predict("fitness")
+        diagnostics["trend_prediction"] = self.trend.predict("fitness")
 
         # Speculative fork merge
-        _ = self.speculative.evaluate_and_select()
-        _ = self.speculative_fork.merge(0, 1)
+        diagnostics["speculative_result"] = self.speculative.evaluate_and_select()
+        diagnostics["speculative_fork_merge"] = self.speculative_fork.merge(0, 1)
 
-        # Tool fitness record
+        # Tool fitness record (both old and new)
         self.tool_fitness.record_usage(context or "auto", "evolve", success=True, latency_ms=10.0)
+        self.tool_fitness_full.record_call(context or "auto", {}, success=True, latency_ms=10.0)
 
         # FGG verify
-        _ = self.fggm.verify({"context": context})
+        diagnostics["fggm_verify"] = self.fggm.verify({"context": context})
 
         # Eval engine deep
-        _ = self.eval_engine.get_fitness_history()
-        _ = self.eval_engine.get_convergence_curve()
+        diagnostics["eval_fitness_history"] = self.eval_engine.get_fitness_history()
+        diagnostics["eval_convergence"] = self.eval_engine.get_convergence_curve()
 
         return EvolutionOutcome(
             result=EvolutionResult.SUCCESS,
             fitness_before=fitness_before, fitness_after=fitness_after,
             duration_ms=(time.time() - start) * 1000,
-            details=f"delta={delta:.4f}",
+            details=f"delta={delta:.4f}, diagnostics_keys={list(diagnostics.keys())}",
+            metadata=diagnostics,
         )
 
     # ============================================================
@@ -1202,9 +1272,15 @@ class Omega:
     def learn(self, source: str = "web", query: str = "AI", max_results: int = 5) -> dict:
         # Exploration quota check
         can_explore, reason = self.exploration_quota.can_explore()
+        learn_diagnostics: Dict[str, Any] = {}
         if not can_explore:
+            self.exploration_quota.record_round()  # 防止计数器死锁
             return {"source": source, "query": query, "total_results": 0, "new_nodes": 0,
                     "reason": reason}
+
+        if reason == "revision_round_required":
+            # Insert a revision round before continuing exploration
+            self.exploration_quota.record_round()
 
         # EvolvingPrompt: generate optimized prompt
         prompt = self.evolving_prompt.generate_prompt(
@@ -1244,39 +1320,73 @@ class Omega:
         self.refiner.refine({"action": "learn", "source": source, "query": query})
 
         # === Learn: full mechanism activation ===
+        # ParallelDispatcher: 并行处理扫描结果
+        learn_dispatch_info = {}
+        if results:
+            dispatch_result = self.parallel_dispatcher.dispatch([
+                {"description": f"Process: {r.title}"} for r in results[:3]
+            ])
+            learn_dispatch_info = {
+                "dispatched": dispatch_result.completed,
+                "failed": dispatch_result.failed,
+            }
+
+        # A2ABasic: 注册当前 agent 能力并委托任务
+        a2a_stats = {}
+        a2a_task = None
+        try:
+            self.a2a_basic.register_agent("omega", ["learn"])
+            a2a_task = self.a2a_basic.delegate_task(f"Learn about {query}", required=[], requester="omega")
+            a2a_stats = self.a2a_basic.get_stats()
+        except Exception:
+            a2a_stats = {"status": "a2a_unavailable"}
+
+        # SubAgentContract: 为委托学习创建合约
+        contract_id = ""
+        if a2a_task and hasattr(a2a_task, 'executor') and a2a_task.executor:
+            try:
+                contract = self.sub_agent_contract.create_contract(
+                    agent_id=a2a_task.executor,
+                    task=f"Learn: {query}",
+                    quality_threshold=0.7
+                )
+                contract_id = contract.get("id", "") if isinstance(contract, dict) else str(getattr(contract, 'id', ''))
+            except Exception:
+                contract_id = "contract_creation_failed"
+
         # Curiosity queue deep
-        _ = self.curiosity_queue.pop()
+        curiosity_item = self.curiosity_queue.pop()
 
         # Utility tracker deep
         for node_id in new_nodes[:3]:
-            _ = self.utility_tracker.get_average(node_id)
+            learn_diagnostics.setdefault("utility_averages", []).append(self.utility_tracker.get_average(node_id))
 
         # Mechanism registry deep
         self.mechanism_registry.enable(f"learn_{source}")
-        _ = self.mechanism_registry.invoke(f"learn_{source}")
+        learn_diagnostics["mechanism_invoke"] = self.mechanism_registry.invoke(f"learn_{source}")
         self.mechanism_registry.disable(f"learn_{source}")
 
         # Skill registry deep
-        _ = self.skill_registry.get_skill(f"learn_{source}_{query}")
-        _ = self.skill_registry.get_active_skills()
+        learn_diagnostics["skill_lookup"] = self.skill_registry.get_skill(f"learn_{source}_{query}")
+        learn_diagnostics["active_skills"] = self.skill_registry.get_active_skills()
 
         # Curator deep
-        _ = self.curator.get_quality_ranking()
+        learn_diagnostics["curator_ranking"] = self.curator.get_quality_ranking()
 
         # Few-shot deep
-        _ = self.few_shot.select(query)
+        learn_diagnostics["few_shot_selected"] = self.few_shot.select(query)
 
         # Knowledge gen deep
         self.knowledge_gen.generate_from_context(results[0].content if results else "")
-        _ = self.knowledge_gen.generate_from_query(query)
-        _ = self.knowledge_gen.get_top_entities()
-        _ = self.knowledge_gen.get_facts_for_entity(query.split()[0] if query else "")
+        learn_diagnostics["kg_from_query"] = self.knowledge_gen.generate_from_query(query)
+        learn_diagnostics["kg_top_entities"] = self.knowledge_gen.get_top_entities()
+        learn_diagnostics["kg_facts"] = self.knowledge_gen.get_facts_for_entity(query.split()[0] if query else "")
 
         # Behavior mirror
         self.behavior_mirror.mirror("system", "learn", {"source": source, "query": query})
 
         # Event bus
-        _ = self.event_bus.get_recent(3)
+        learn_diagnostics["event_recent"] = self.event_bus.get_recent(3)
 
         # Knowledge-to-Mechanism: check if knowledge can update parameters
         applied_changes = []
@@ -1297,25 +1407,47 @@ class Omega:
 
         # DeepRetrofit6: trigger deep learning when knowledge is acquired
         if len(new_nodes) > 0:
-            self.deep_retrofit_6.execute(topic=query, source_file="%s://%s" % (source, query))
+            source_content = "\n---\n".join(
+                f"{r.title}: {r.content}" for r in results
+            )
+            self.deep_retrofit_6.execute(
+                topic=query,
+                source_file="%s://%s" % (source, query),
+                source_content=source_content,
+            )
 
         return {"source": source, "query": query, "total_results": len(new_nodes),
-                "new_nodes": len(new_nodes), "applied_changes": len(applied_changes)}
+                "new_nodes": len(new_nodes), "applied_changes": len(applied_changes),
+                "parallel_dispatch": learn_dispatch_info, "a2a_stats": a2a_stats,
+                "contract_id": contract_id, "diagnostics": learn_diagnostics}
 
     # ============================================================
     # reflect pipeline
     # ============================================================
-    def reflect(self) -> dict:
+    def reflect(self, context: str = "") -> dict:
         # AdaptiveHarness: check harness state
         harness_state = self.adaptive_harness.get_state()
+        reflect_diagnostics: Dict[str, Any] = {}
 
         # LoopSelector: record reflection outcome
         self.loop_selector.record_outcome(LoopStrategy.REFLEXION, 0.8)
 
+        # === Cross-analyze recent learned knowledge ===
+        # Get recent nodes directly from store (bypass RecallRequest validation)
+        recent_nodes = self.store.search("", limit=20)
+        learned_knowledge_summary = []
+        for node in recent_nodes[:5]:
+            learned_knowledge_summary.append({
+                "content": node.content[:200] if node else "",
+                "utility": getattr(node, "utility", 0.0) if node else 0.0,
+                "tags": getattr(node, "tags", []) if node else [],
+                "type": getattr(node, "type", "") if node else "",
+            })
+
         # ThinkTool: structured thinking before reflection
         think_result = self.think_tool.run(
             task="Reflect on system performance and identify improvements",
-            context=f"health={self._compute_health()}, nodes={self.store.get_node_count()}",
+            context=f"health={self._compute_health()}, nodes={self.store.get_node_count()}, recent_knowledge={len(recent_nodes)}",
         )
 
         # ContextEngineering: isolate reflection context
@@ -1323,8 +1455,11 @@ class Omega:
             ContextComponent(name="task", type="instruction",
                            content="Reflect on system performance", priority=1, tokens=20),
             ContextComponent(name="health", type="knowledge",
-                           content="health=%s, nodes=%d" % (self._compute_health(), self.store.get_node_count()),
+                           content="health=%s, nodes=%d, recent_learned=%d" % (self._compute_health(), self.store.get_node_count(), len(recent_nodes)),
                            priority=2, tokens=20),
+            ContextComponent(name="learned_knowledge", type="knowledge",
+                           content=str(learned_knowledge_summary[:3]),
+                           priority=3, tokens=100),
         ]
         isolated, remaining = self.context_engineering.isolate(
             reflect_components, "reflection analysis", max_tokens=8000
@@ -1336,7 +1471,7 @@ class Omega:
             edge_count=self.store.get_edge_count(),
             bank_count=self.bank.count(),
             evolution_fitness=current_fitness,
-            alert_level=self.equilibrium.get_alert_level().value,
+            alert_level=self.equilibrium.get_alert_level(),
             uptime_s=time.time() - self._start_time,
             drift_alerts=len(self.drift_detector.detect()),
             convergence=self.convergence.is_converged(),
@@ -1357,7 +1492,7 @@ class Omega:
             self.thermodynamic.reset()
         self.convergence.observe(fv.composite_score)
         self.coala.observe({"five_view": fv.composite_score, "harness": harness_score})
-        _ = self.four_network.reflect("system performance", num_reflections=2)
+        reflect_diagnostics["four_network_reflect"] = self.four_network.reflect("system performance", num_reflections=2)
         self.info_gain.record_gain("reflect", fv.composite_score)
         self.agent_forest.add_agent(f"reflector_{int(time.time())}", {"score": fv.composite_score})
         self.dynamic_scaler.scale("reflect", fv.composite_score)
@@ -1377,6 +1512,37 @@ class Omega:
         # Trend: observe five_view trend
         self.trend.observe("five_view", fv.composite_score)
 
+        # SystematicDebugging: 自动调试低 fitness 状态
+        reflect_debug_info = {"status": "no_debug_needed"}
+        if fv.composite_score < 0.3:
+            try:
+                debug_result = self.systematic_debugging.debug(
+                    f"Low fitness: {fv.composite_score:.2f}",
+                    context={"five_view": fv.__dict__ if hasattr(fv, '__dict__') else {}}
+                )
+                reflect_debug_info = {
+                    "root_cause": debug_result.root_cause,
+                    "verified": debug_result.verified,
+                    "confidence": debug_result.confidence,
+                }
+            except Exception as e:
+                reflect_debug_info = {"error": str(e)}
+
+        # CodeReviewer: 审查 reflect 分析质量
+        reflect_review = {"score": 0, "critical": 0, "approved": False}
+        try:
+            review_result = self.code_reviewer.review(
+                code_path="life.py:reflect",
+                changes=[{"type": "reflection", "score": fv.composite_score}]
+            )
+            reflect_review = {
+                "score": review_result.overall_score,
+                "critical": review_result.critical_count,
+                "approved": review_result.approved,
+            }
+        except Exception:
+            reflect_review["status"] = "review_unavailable"
+
         # Disposition: get behavioral prediction
         disposition = self.disposition.get_disposition("remember_utility")
 
@@ -1385,80 +1551,80 @@ class Omega:
 
         # === Reflect: full mechanism activation ===
         # Thermodynamic deep operations
-        _ = self.thermodynamic.get_energy()
-        _ = self.thermodynamic.get_compressed_scale()
-        _ = self.thermodynamic.compute_intelligence()
-        _ = self.thermodynamic.get_intelligence_breakdown()
-        _ = self.thermodynamic.get_rare_valid_fidelity()
-        _ = self.thermodynamic.get_trajectory_summary()
+        reflect_diagnostics["thermo_energy"] = self.thermodynamic.get_energy()
+        reflect_diagnostics["thermo_compressed"] = self.thermodynamic.get_compressed_scale()
+        reflect_diagnostics["thermo_intelligence"] = self.thermodynamic.compute_intelligence()
+        reflect_diagnostics["thermo_intel_breakdown"] = self.thermodynamic.get_intelligence_breakdown()
+        reflect_diagnostics["thermo_rare_valid"] = self.thermodynamic.get_rare_valid_fidelity()
+        reflect_diagnostics["thermo_trajectory"] = self.thermodynamic.get_trajectory_summary()
         self.thermodynamic.observe_baseline(0.5)
         self.thermodynamic.observe_action("reflect")
-        _ = self.thermodynamic.get_validity_rate()
-        _ = self.thermodynamic.get_rare_valid_ratio()
+        reflect_diagnostics["thermo_validity_rate"] = self.thermodynamic.get_validity_rate()
+        reflect_diagnostics["thermo_rare_ratio"] = self.thermodynamic.get_rare_valid_ratio()
 
         # Convergence deep
-        _ = self.convergence.get_history()
+        reflect_diagnostics["convergence_history"] = self.convergence.get_history()
 
         # Info gain deep
-        _ = self.info_gain.diminishing_returns()
+        reflect_diagnostics["info_gain_returns"] = self.info_gain.diminishing_returns()
 
         # Agent forest deep operations
         self.agent_forest.record_performance(f"reflector_{int(time.time())}", fv.composite_score)
-        _ = self.agent_forest.get_agent_rankings()
-        _ = self.agent_forest.sample_agents(2)
+        reflect_diagnostics["agent_rankings"] = self.agent_forest.get_agent_rankings()
+        reflect_diagnostics["agent_samples"] = self.agent_forest.sample_agents(2)
         vote = self.agent_forest.sample_vote("reflect", responses=["ok", "ok", "needs_work"])
-        _ = self.agent_forest.remove_agent("old_reflector")
+        reflect_diagnostics["agent_removed"] = self.agent_forest.remove_agent("old_reflector")
 
         # Behavior mirror deep
-        _ = self.behavior_mirror.compute_profile("system")
-        _ = self.behavior_mirror.detect_deviation("system")
+        reflect_diagnostics["behavior_profile"] = self.behavior_mirror.compute_profile("system")
+        reflect_diagnostics["behavior_deviation"] = self.behavior_mirror.detect_deviation("system")
 
         # Event bus deep
         self.event_bus.subscribe("reflect_events", lambda e: None)
-        _ = self.event_bus.get_recent(5)
+        reflect_diagnostics["event_recent"] = self.event_bus.get_recent(5)
 
         # Feedback deep operations
-        _ = self.feedback.get_average("recent")
-        _ = self.feedback.get_best_performers()
-        _ = self.feedback.get_feedback_count("recent")
-        _ = self.feedback.get_feedback_trend("recent")
-        _ = self.feedback.get_type_stats()
+        reflect_diagnostics["feedback_avg"] = self.feedback.get_average("recent")
+        reflect_diagnostics["feedback_best"] = self.feedback.get_best_performers()
+        reflect_diagnostics["feedback_count"] = self.feedback.get_feedback_count("recent")
+        reflect_diagnostics["feedback_trend"] = self.feedback.get_feedback_trend("recent")
+        reflect_diagnostics["feedback_type_stats"] = self.feedback.get_type_stats()
 
         # Failure log deep operations
         self.failure_log.log("reflect", "observation", {"score": fv.composite_score})
-        _ = self.failure_log.get_action_failure_rates()
-        _ = self.failure_log.get_common_errors()
-        _ = self.failure_log.get_recent_failures()
-        _ = self.failure_log.get_severity_distribution()
+        reflect_diagnostics["failure_rates"] = self.failure_log.get_action_failure_rates()
+        reflect_diagnostics["failure_errors"] = self.failure_log.get_common_errors()
+        reflect_diagnostics["failure_recent"] = self.failure_log.get_recent_failures()
+        reflect_diagnostics["failure_severity"] = self.failure_log.get_severity_distribution()
 
         # Disposition deep operations
-        _ = self.disposition.detect_shifts("remember_utility")
-        _ = self.disposition.get_all_dispositions()
-        _ = self.disposition.get_most_stable()
-        _ = self.disposition.get_most_volatile()
-        _ = self.disposition.get_shift_count("remember_utility")
-        _ = self.disposition.get_shift_history("remember_utility")
-        _ = self.disposition.get_variance("remember_utility")
-        _ = self.disposition.get_std("remember_utility")
-        _ = self.disposition.predict("remember_utility")
+        reflect_diagnostics["disposition_shifts"] = self.disposition.detect_shifts("remember_utility")
+        reflect_diagnostics["disposition_all"] = self.disposition.get_all_dispositions()
+        reflect_diagnostics["disposition_stable"] = self.disposition.get_most_stable()
+        reflect_diagnostics["disposition_volatile"] = self.disposition.get_most_volatile()
+        reflect_diagnostics["disposition_shift_count"] = self.disposition.get_shift_count("remember_utility")
+        reflect_diagnostics["disposition_shift_history"] = self.disposition.get_shift_history("remember_utility")
+        reflect_diagnostics["disposition_variance"] = self.disposition.get_variance("remember_utility")
+        reflect_diagnostics["disposition_std"] = self.disposition.get_std("remember_utility")
+        reflect_diagnostics["disposition_predict"] = self.disposition.predict("remember_utility")
 
         # MARS deep operations
-        _ = self.mars.get_all_beliefs()
+        reflect_diagnostics["mars_all_beliefs"] = self.mars.get_all_beliefs()
 
         # Causal graph deep
         self.causal_graph.add_edge("reflect_start", f"reflect_{int(time.time())}", "causes", 0.8)
-        _ = self.causal_graph.shortest_path("reflect_start", f"reflect_{int(time.time())}")
-        _ = self.causal_graph.causal_effects("reflect_start")
+        reflect_diagnostics["causal_shortest"] = self.causal_graph.shortest_path("reflect_start", f"reflect_{int(time.time())}")
+        reflect_diagnostics["causal_effects"] = self.causal_graph.causal_effects("reflect_start")
         self.causal_graph.do_intervention("reflect_start", 0.9)
 
         # Reflexion deep
         self.reflexion.record_attempt("reflect", fv.composite_score)
-        _ = self.reflexion.get_reflection_context(query="reflect")
-        _ = self.reflexion.get_worst_actions()
-        _ = self.reflexion.get_improvement_trend()
+        reflect_diagnostics["reflexion_context"] = self.reflexion.get_reflection_context(query="reflect")
+        reflect_diagnostics["reflexion_worst"] = self.reflexion.get_worst_actions()
+        reflect_diagnostics["reflexion_trend"] = self.reflexion.get_improvement_trend()
 
         # Extended thinking deep
-        _ = self.extended_thinking.get_thought_tree()
+        reflect_diagnostics["extended_thought_tree"] = self.extended_thinking.get_thought_tree()
 
         # Loop guard deep
         self.loop_guard.record_action("reflect")
@@ -1479,9 +1645,16 @@ class Omega:
             "convergence": self.convergence.is_converged(),
             "worst_performers": len(worst),
             "avoidance_list": len(avoidance),
-            "equilibrium": self.equilibrium.get_alert_level().value,
+            "equilibrium": self.equilibrium.get_alert_level(),
             "disposition": disposition,
             "mars_belief": mars_belief,
+            "recent_learned": {
+                "count": len(recent_nodes),
+                "knowledge": learned_knowledge_summary,
+            },
+            "debug": reflect_debug_info,
+            "code_review": reflect_review,
+            "diagnostics": reflect_diagnostics,
         }
 
     # ============================================================
@@ -1492,8 +1665,11 @@ class Omega:
         for node in nodes:
             self.dream.register_memory(node)
 
+        # 初始化梦境数据收集字典
+        dream_data = {}
+
         dream_result = self.dream.run_cycle(branch=branch)
-        _ = self.dream.dream()
+        dream_data['extra_dream'] = self.dream.dream()  # 收集额外梦境输出
         self.shmr.generate(entities=[], context="dream")
         self.consolidation_engine.run()
         self.rare_valid.detect()
@@ -1501,13 +1677,13 @@ class Omega:
         self.gravity.add_node("dream", mass=0.5)
         self.forgetting.compute_retention_compat("dream", age=1.0)
         self.state_machine.transition(LoopState.RUNNING)
-        _ = self.state_machine.state
+        dream_data['pre_transition_state'] = self.state_machine.state  # 记录转移前状态
         self.state_machine.force_transition(LoopState.COMPLETED)
         self.state_machine.force_transition(LoopState.RUNNING)
-        _ = self.state_machine.state
+        dream_data['post_transition_state'] = self.state_machine.state  # 记录转移后状态
         self.consistency.vote([n.content[:100] for n in nodes[:10]])
-        _ = self.consistency.get_consensus_history()
-        _ = self.consistency.vote_with_weights(["a","b"], [0.8,0.2])
+        dream_data['consensus_history'] = self.consistency.get_consensus_history()  # 收集共识历史
+        dream_data['weighted_vote'] = self.consistency.vote_with_weights(["a","b"], [0.8,0.2])  # 收集加权投票结果
         self.extended_thinking.think({"context": "dream", "memory_count": len(nodes)})
         self.dna_extractor.extract({"memories": len(nodes), "patterns": dream_result.patterns_found})
 
@@ -1515,54 +1691,55 @@ class Omega:
         beliefs = self.shmr.get_beliefs(min_confidence=0.3)
         dream_result.beliefs_synthesized += len(beliefs)
 
-        # === Dream: full mechanism activation ===
-        # State machine deep
-        _ = self.state_machine.get_valid_next()
-        _ = self.state_machine.get_transition_history()
-        _ = self.state_machine.state
+        # === 梦境：全机制激活 ===
+        # 状态机深度查询
+        dream_data['valid_next'] = self.state_machine.get_valid_next()  # 收集有效下一步状态
+        dream_data['transition_history'] = self.state_machine.get_transition_history()  # 收集状态转移历史
+        dream_data['sm_state'] = self.state_machine.state  # 收集当前状态机状态
 
-        # Forgetting deep operations
-        _ = self.forgetting.get_expired_nodes(threshold=0.1)
-        _ = self.forgetting.get_most_forgotten()
-        _ = self.forgetting.get_most_retained()
-        _ = self.forgetting.get_retention("dream")
-        _ = self.forgetting.get_retention_distribution()
-        _ = self.forgetting.predict_forget_time("dream")
+        # 遗忘机制深度操作
+        dream_data['expired_nodes'] = self.forgetting.get_expired_nodes(threshold=0.1)  # 收集过期节点
+        dream_data['most_forgotten'] = self.forgetting.get_most_forgotten()  # 收集最被遗忘项
+        dream_data['most_retained'] = self.forgetting.get_most_retained()  # 收集最被保留项
+        dream_data['retention'] = self.forgetting.get_retention("dream")  # 收集保留率
+        dream_data['retention_dist'] = self.forgetting.get_retention_distribution()  # 收集保留率分布
+        dream_data['forget_time'] = self.forgetting.predict_forget_time("dream")  # 收集遗忘预测时间
 
-        # Gravity deep
-        _ = self.gravity.compute("dream", "dream")
-        _ = self.gravity.rank_by_gravity("dream")
-        _ = self.gravity.get_strongest_pair()
-        _ = self.gravity.get_total_gravity()
+        # 引力机制深度查询
+        dream_data['gravity'] = self.gravity.compute("dream", "dream")  # 收集引力计算结果
+        dream_data['gravity_rank'] = self.gravity.rank_by_gravity("dream")  # 收集引力排名
+        dream_data['strongest_pair'] = self.gravity.get_strongest_pair()  # 收集最强引力对
+        dream_data['total_gravity'] = self.gravity.get_total_gravity()  # 收集总引力值
 
-        # Rare valid deep
+        # 稀有值检测深度查询
         self.rare_valid.observe(0.5)
-        _ = self.rare_valid.get_rare_values()
+        dream_data['rare_values'] = self.rare_valid.get_rare_values()  # 收集稀有值
 
-        # DNA extractor deep
-        _ = self.dna_extractor.get_dominant_features()
+        # DNA提取器深度查询
+        dream_data['dominant_features'] = self.dna_extractor.get_dominant_features()  # 收集主导特征
 
-        # Consolidation pipeline deep
+        # 巩固管道深度操作
         self.consolidation.consolidate([{"content": "dream_content", "importance": 0.5}])
 
-        # SHMR deep
-        _ = self.shmr.get_co_occurrence_stats()
-        _ = self.shmr.get_entity_stats()
+        # SHMR深度查询
+        dream_data['co_occurrence'] = self.shmr.get_co_occurrence_stats()  # 收集共现统计
+        dream_data['entity_stats'] = self.shmr.get_entity_stats()  # 收集实体统计
 
-        # Extended thinking deep
-        _ = self.extended_thinking.get_thought_tree()
+        # 扩展思考深度查询
+        dream_data['thought_tree'] = self.extended_thinking.get_thought_tree()  # 收集思考树
 
-        # Behavior mirror
+        # 行为镜像
         self.behavior_mirror.mirror("system", "dream", {"patterns": dream_result.patterns_found})
 
-        # Event bus
-        _ = self.event_bus.get_recent(3)
+        # 事件总线
+        dream_data['recent_events'] = self.event_bus.get_recent(3)  # 收集最近事件
 
         # Session
         self.session.access(f"dream_{int(time.time())}")
 
+        import uuid
         # Log dream to database
-        cycle_id = f"dream_{int(time.time())}"
+        cycle_id = f"dream_{uuid.uuid4().hex[:12]}"
         self.store.log_evolution(cycle_id, 0.0, dream_result.patterns_found / max(len(nodes), 1), "dream")
         # Also write to dream_log table directly
         try:
@@ -1579,6 +1756,9 @@ class Omega:
         except Exception as e:
             logger.warning("Failed to write dream log: %s: %s", type(e).__name__, e)
 
+        # 附加梦境数据到结果对象
+        setattr(dream_result, 'dream_data', dream_data)
+
         return dream_result
 
     # ============================================================
@@ -1586,6 +1766,7 @@ class Omega:
     # ============================================================
     def maintain(self) -> dict:
         start = time.time()
+        maintain_data = {}
 
         self.bank.run_migration()
         self.bank.run_aging()
@@ -1664,6 +1845,21 @@ class Omega:
         # MiMo: FileChecksum — verify core file integrity
         checksum_results = self.file_checksum.verify_all()
 
+        # OmegaServer: 检查服务状态
+        maintain_server_status = {"status": "unknown"}
+        try:
+            maintain_server_status = self.server.status()
+        except Exception:
+            maintain_server_status = {"status": "server_check_failed"}
+
+        # MemoryDataAdapter: 运行快速基准评估
+        maintain_benchmark = {}
+        try:
+            benchmark = self.memory_data_adapter.evaluate("memoryagentbench", "ultra")
+            maintain_benchmark = benchmark.metrics if hasattr(benchmark, 'metrics') else {}
+        except Exception:
+            maintain_benchmark = {"status": "benchmark_unavailable"}
+
         # MiMo: ThreeLayerCompression — compress maintain report
         report_text = "Maintain completed: %d nodes, %d edges, %d expired rules" % (
             self.store.get_node_count(), self.store.get_edge_count(), len(expired))
@@ -1684,72 +1880,72 @@ class Omega:
 
         # === Maintain: full mechanism activation ===
         # Bank deep operations
-        _ = self.bank.count_by_tier()
+        maintain_data['bank_tiers'] = self.bank.count_by_tier()
         self.bank.deposit("maintain_ref", tier=Tier.WORKING)
         # Store deep operations
-        _ = self.store.read_node("test_id")
+        maintain_data['store_read'] = self.store.read_node("test_id")
         self.store.log_evolution("maintain", 0.5, 0.6, "maintain")
         self.store.log_maintenance("migration", 10, 5.0)
         self.store.log_audit("maintain", 0.8, {"action": "cleanup"})
         # delete_node and update_node: test via temporary node
         temp_node = Node(id="temp_test_node", content="temp", utility=0.1)
         self.store.create_node(temp_node)
-        _ = self.store.read_node("temp_test_node")
+        maintain_data['temp_read'] = self.store.read_node("temp_test_node")
         temp_node.utility = 0.9
         self.store.update_node(temp_node)
         self.store.delete_node("temp_test_node")
-        _ = self.bank.get_importance_distribution()
-        _ = self.bank.get_newest_items(Tier.WORKING)
-        _ = self.bank.get_oldest_items(Tier.WORKING)
-        _ = self.bank.get_tier_items(Tier.WORKING)
+        maintain_data['bank_importance'] = self.bank.get_importance_distribution()
+        maintain_data['bank_newest'] = self.bank.get_newest_items(Tier.WORKING)
+        maintain_data['bank_oldest'] = self.bank.get_oldest_items(Tier.WORKING)
+        maintain_data['bank_tier_items'] = self.bank.get_tier_items(Tier.WORKING)
 
         # Crash restore deep
         self.crash_restore.save_checkpoint({"maintain_cycle": time.time(), "nodes": self.store.get_node_count()})
-        _ = self.crash_restore.restore_latest()
-        _ = self.crash_restore.list_checkpoints()
+        maintain_data['crash_restore'] = self.crash_restore.restore_latest()
+        maintain_data['crash_checkpoints'] = self.crash_restore.list_checkpoints()
 
         # Self healing deep
-        _ = self.self_healing.diagnose({"bank_count": self.bank.count()})
+        maintain_data['heal_diagnosis'] = self.self_healing.diagnose({"bank_count": self.bank.count()})
 
         # Convergence deep
-        _ = self.convergence.get_history()
+        maintain_data['convergence_history'] = self.convergence.get_history()
 
         # DAG executor deep
         self.dag_executor.add_node("maintain_task")
-        _ = self.dag_executor.validate()
-        _ = self.dag_executor.execute()
-        _ = self.dag_executor.get_state_summary()
+        maintain_data['dag_validate'] = self.dag_executor.validate()
+        maintain_data['dag_execute'] = self.dag_executor.execute()
+        maintain_data['dag_state_summary'] = self.dag_executor.get_state_summary()
 
         # Monitored DAG deep
-        _ = self.monitored_dag.execute_monitored()
-        _ = self.monitored_dag.get_latency_stats()
+        maintain_data['monitored_dag_execute'] = self.monitored_dag.execute_monitored()
+        maintain_data['monitored_dag_latency'] = self.monitored_dag.get_latency_stats()
 
         # Parallel DAG deep
-        _ = self.parallel_dag.execute_parallel()
+        maintain_data['parallel_dag_execute'] = self.parallel_dag.execute_parallel()
 
         # Retryable DAG deep
-        _ = self.retryable_dag.execute_with_retry(failure_rate=0.0)
+        maintain_data['retryable_dag_execute'] = self.retryable_dag.execute_with_retry(failure_rate=0.0)
 
         # Trajectory deep operations
-        _ = self.trajectory.get_action_summary()
-        _ = self.trajectory.compare_trajectories("remember", "recall")
-        _ = self.trajectory.get_common_errors()
-        _ = self.trajectory.get_common_failures()
-        _ = self.trajectory.get_duration_stats("remember")
-        _ = self.trajectory.get_trajectories()
-        _ = self.trajectory.success_rate("remember")
+        maintain_data['traj_action_summary'] = self.trajectory.get_action_summary()
+        maintain_data['traj_compare'] = self.trajectory.compare_trajectories("remember", "recall")
+        maintain_data['traj_common_errors'] = self.trajectory.get_common_errors()
+        maintain_data['traj_common_failures'] = self.trajectory.get_common_failures()
+        maintain_data['traj_duration_stats'] = self.trajectory.get_duration_stats("remember")
+        maintain_data['traj_trajectories'] = self.trajectory.get_trajectories()
+        maintain_data['traj_success_rate'] = self.trajectory.success_rate("remember")
 
         # Progressive complexity deep
-        _ = self.progressive_complexity.assess("maintain", context_tokens=5000)
+        maintain_data['progressive_complexity'] = self.progressive_complexity.assess("maintain", context_tokens=5000)
 
         # Context window deep
-        _ = self.context_window.check()
-        _ = self.context_window.suggest_compression()
+        maintain_data['context_check'] = self.context_window.check()
+        maintain_data['context_suggest_compression'] = self.context_window.suggest_compression()
 
         # Human oversight deep
         req = self.human_oversight.submit_action("maintain_cleanup", RiskLevel.LOW)
-        _ = self.human_oversight.needs_human(req)
-        _ = self.human_oversight.get_pending()
+        maintain_data['human_oversight_needs_human'] = self.human_oversight.needs_human(req)
+        maintain_data['human_oversight_pending'] = self.human_oversight.get_pending()
         self.human_oversight.check_timeouts()
         # approve/reject are triggered by human input, not pipeline
         # but we test the interface:
@@ -1762,55 +1958,55 @@ class Omega:
             self.human_oversight.reject(reject_req.request_id, "system", "too dangerous")
 
         # Tree of thoughts deep
-        _ = self.tree_of_thoughts.search("maintain optimization", strategy=SearchStrategy.BFS)
+        maintain_data['tree_of_thoughts'] = self.tree_of_thoughts.search("maintain optimization", strategy=SearchStrategy.BFS)
 
         # Think tool deep
-        _ = self.think_tool.run(task="maintain analysis", context="system maintenance")
+        maintain_data['think_tool'] = self.think_tool.run(task="maintain analysis", context="system maintenance")
 
         # Structured output deep
-        _ = self.structured_output.validate('{"status": "ok"}', [])
-        _ = self.structured_output.generate_schema_prompt([SchemaField("task", "string"), SchemaField("result", "string")])
+        maintain_data['structured_validate'] = self.structured_output.validate('{"status": "ok"}', [])
+        maintain_data['structured_schema_prompt'] = self.structured_output.generate_schema_prompt([SchemaField("task", "string"), SchemaField("result", "string")])
 
         # XML tag deep
         from prometheus_ultra.prompt.xml_tag import PromptSection
         prompt = self.xml_tag.build([PromptSection("task", "maintain")])
-        _ = self.xml_tag.extract_all_sections(prompt)
-        _ = self.xml_tag.extract_section(prompt, "task")
+        maintain_data['xml_all_sections'] = self.xml_tag.extract_all_sections(prompt)
+        maintain_data['xml_task_section'] = self.xml_tag.extract_section(prompt, "task")
 
         # Reasoning adapter deep
-        _ = self.reasoning_adapter.adapt("think step by step", "reasoning")
+        maintain_data['reasoning_adapter'] = self.reasoning_adapter.adapt("think step by step", "reasoning")
 
         # Stream deep
-        _ = self.stream.recent(5)
-        _ = self.stream.search_content("maintain")
-        _ = self.stream.get_count()
-        _ = self.stream.get_type_distribution()
-        _ = self.stream.get_avg_importance()
+        maintain_data['stream_recent'] = self.stream.recent(5)
+        maintain_data['stream_search'] = self.stream.search_content("maintain")
+        maintain_data['stream_count'] = self.stream.get_count()
+        maintain_data['stream_type_dist'] = self.stream.get_type_distribution()
+        maintain_data['stream_avg_importance'] = self.stream.get_avg_importance()
 
         # Behavior mirror deep
         self.behavior_mirror.mirror("system", "maintain", {"duration": time.time() - start})
-        _ = self.behavior_mirror.compute_profile("system")
-        _ = self.behavior_mirror.detect_deviation("system")
+        maintain_data['behavior_profile'] = self.behavior_mirror.compute_profile("system")
+        maintain_data['behavior_deviation'] = self.behavior_mirror.detect_deviation("system")
 
         # Event bus deep
-        _ = self.event_bus.get_recent(5)
+        maintain_data['event_bus_recent'] = self.event_bus.get_recent(5)
 
         # Session deep
         self.session.access(f"maintain_{int(time.time())}")
         self.session.expire_idle()
 
         # Adapter deep
-        _ = self.x_adapter.reverse_adapt({"node_id": "maintain"})
-        _ = self.y_adapter.get_tier_name(0)
+        maintain_data['x_adapter_reverse'] = self.x_adapter.reverse_adapt({"node_id": "maintain"})
+        maintain_data['y_adapter_tier_name'] = self.y_adapter.get_tier_name(0)
 
         # Monitor deep
-        _ = self.monitor.get_uptime()
-        _ = self.monitor.get_health()
+        maintain_data['monitor_uptime'] = self.monitor.get_uptime()
+        maintain_data['monitor_health'] = self.monitor.get_health()
 
         # Skill deep
-        self.skill_claw.register_skill("maintain_skill", ["maintenance", "cleanup"])
-        _ = self.skill_registry.get_skill("maintain_skill")
-        _ = self.skill_registry.get_active_skills()
+        self.skill_claw.register_skill("maintain_skill", "maintain_skill", "Maintenance and cleanup skill", ["maintenance", "cleanup"])
+        maintain_data['skill_get'] = self.skill_registry.get_skill("maintain_skill")
+        maintain_data['skill_active'] = self.skill_registry.get_active_skills()
 
         # Instincts deep
         self.instincts.register("maintain_check", lambda ctx: True)
@@ -1830,6 +2026,9 @@ class Omega:
             "duration_ms": (time.time() - start) * 1000,
             "expired_nodes": len(expired_nodes),
             "trajectory_actions": len(traj_summary),
+            "server_status": maintain_server_status,
+            "benchmark": maintain_benchmark,
+            "maintain_data": maintain_data,
         }
 
     # ============================================================
@@ -1917,7 +2116,7 @@ class Omega:
             return "unknown"
 
     def close(self):
-        self.wal._flush()
+        self.wal.checkpoint()
         self.bank.close()
         self.cache.close()
         self.store.close()

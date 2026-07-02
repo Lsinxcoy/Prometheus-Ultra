@@ -1,39 +1,26 @@
 """SHMRGenerator — Synthetic Belief generation from entity co-occurrence.
 
-Architecture:
-    Track entity frequency across observations.
-    Track entity co-occurrence pairs.
-    Compute PMI (Pointwise Mutual Information) for each pair.
-    Synthesize beliefs for pairs with PMI > threshold.
+基于:
+- Church & Hanks (1990) Word Association Norms, Mutual Information, and Lexicography
+  - PMI (Pointwise Mutual Information): PMI(a,b) = log2(P(a,b)/(P(a)×P(b)))
+  - PMI>0: 正相关, PMI=0: 独立, PMI<0: 负相关
+  - 实体共现统计: 频率计数 + 配对计数 → PMI计算
+  - 信念合成: PMI≥min_pmi阈值 → 生成Belief实体(含confidence=PMI/5)
 
-Algorithm:
+算法:
     generate(entities, context):
-        1. Update entity frequency counts
-        2. Update co-occurrence counts for all pairs
-        3. For each pair with count >= 2:
-           a. Compute P(a,b) = co_occurrence / total_observations
-           b. Compute P(a) = freq(a) / total_observations
-           c. Compute P(b) = freq(b) / total_observations
-           d. PMI(a,b) = log2(P(a,b) / (P(a) × P(b)))
-           e. If PMI >= min_pmi: synthesize belief
+        1. 更新实体频率(self._entity_freq)
+        2. 更新所有配对共现(self._co_occurrence)
+        3. 对count≥2的配对: 计算PMI
+        4. PMI≥min_pmi → 合成belief存入队列
 
-    PMI Interpretation:
-    - PMI = 0: independent (no relationship)
-    - PMI > 0: positively correlated
-    - PMI > 5: very strongly correlated
-    - PMI < 0: negatively correlated
-
-Complexity:
-    generate(): O(E²) where E = entities (typically <20)
-    get_beliefs(): O(B) where B = beliefs
-
-Edge Cases:
-    - Empty entity list: no beliefs generated
-    - Single entity: no co-occurrence possible
-    - Zero total observations: PMI undefined (skipped)
-    - All pairs have PMI < threshold: no beliefs
+来源: Omega系统 shmr 合成信念生成模块 + PMI共现分析
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import math
 from collections import Counter

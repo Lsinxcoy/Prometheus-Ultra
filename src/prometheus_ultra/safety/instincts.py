@@ -5,6 +5,11 @@ Based on: Biological instinct metaphor for zero-latency safety checks.
 from __future__ import annotations
 
 
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 class InstinctsRegistry:
     def __init__(self):
         self._instincts: list[dict] = []
@@ -25,8 +30,8 @@ class InstinctsRegistry:
                     if len(self._recent_triggers) > 100:
                         self._recent_triggers = self._recent_triggers[-50:]
                     results.append({"instinct": inst["name"], "result": {"action": inst["action"]}})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Instinct check failed for %s: %s", inst.get("name", "unknown"), e)
         return results
 
     def get_stats(self) -> dict:

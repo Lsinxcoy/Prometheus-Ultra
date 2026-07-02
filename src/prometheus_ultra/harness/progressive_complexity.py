@@ -10,6 +10,10 @@ Key Principle:
     4. Nested loops for research-level tasks
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field

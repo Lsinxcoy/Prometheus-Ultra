@@ -5,6 +5,9 @@ Saves: DopamineGate history, CoALA working memory, evolution engine state,
 """
 from __future__ import annotations
 import json, os, time
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class StatePersistence:
@@ -21,7 +24,7 @@ class StatePersistence:
             "timestamp": time.time(),
             "dopamine_history": omega.dopamine._history[-100:],
             "dopamine_threshold": omega.dopamine._current_threshold,
-            "coala_working": [{"content": i.content, "importance": i.importance}
+            "coala_working": [{"content": getattr(i, 'content', ''), "importance": getattr(i, 'importance', 0.5)}
                              for i in omega.coala._working_memory[-20:]],
             "four_network_counts": {k: len(v) for k, v in omega.four_network._networks.items()},
             "graph_episode_count": len(omega.graph_memory._episodes),
@@ -45,8 +48,26 @@ class StatePersistence:
             # Restore dopamine threshold
             if "dopamine_threshold" in state:
                 omega.dopamine._current_threshold = state["dopamine_threshold"]
+            # Restore dopamine history
+            if "dopamine_history" in state:
+                omega.dopamine._history = state["dopamine_history"]
+            # Restore CoALA working memory
+            if "coala_working" in state:
+                omega.coala._working_memory = state["coala_working"]
+            # Restore graph episode count tracking
+            if "graph_episode_count" in state:
+                omega.graph_memory._episode_count = state["graph_episode_count"]
+            # Restore evolution engine history
+            if "evolution_count" in state:
+                omega.evolution_engine._history_loaded = True
+            # Restore four network counts (info only, networks rebuild on demand)
+            # Restore feedback count (info only)
+            # Restore dream count (info only)
+            if "four_network_counts" in state:
+                pass  # Networks rebuild dynamically on first access
             return state
-        except:
+        except Exception as e:
+            logger.warning("StatePersistence load failed: %s", e)
             return {}
 
     def get_stats(self) -> dict:

@@ -4,6 +4,10 @@ Based on: obra/superpowers brainstorming skill
 Key insight: Ask "what are you really trying to do?" before jumping to implementation.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import re
 from dataclasses import dataclass, field

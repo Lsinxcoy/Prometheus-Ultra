@@ -15,6 +15,10 @@ Algorithm:
     4. Compute poisoning severity: frequency × recency × confidence_inverse
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 from dataclasses import dataclass, field
 from collections import Counter

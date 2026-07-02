@@ -7,6 +7,10 @@ Implements a library of reasoning strategies that can be retrieved
 based on task type and applied to improve problem-solving.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 from dataclasses import dataclass, field
 import math
 

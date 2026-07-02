@@ -1,0 +1,430 @@
+"""Prometheus Ultra API Server — FastAPI wrapper around Omega.
+
+Exposes all 7 pipelines as HTTP endpoints:
+  POST /api/v1/remember
+  POST /api/v1/recall
+  POST /api/v1/evolve
+  POST /api/v1/learn
+  POST /api/v1/reflect
+  POST /api/v1/dream
+  POST /api/v1/maintain
+  GET  /api/v1/status
+  GET  /api/v1/health
+  POST /api/v1/branch/create
+  POST /api/v1/branch/merge
+  GET  /api/v1/branch/list
+"""
+from __future__ import annotations
+
+import json
+import logging
+import threading
+import time
+from typing import Any, Dict, Optional
+
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+
+# ── Request/Response Models ──────────────────────────────────────────
+
+
+class RememberRequest(BaseModel):
+    content: str = ""
+    utility: float = 0.5
+    tags: list[str] = []
+
+
+class RecallRequest(BaseModel):
+    query: str = ""
+    limit: int = 10
+
+
+class EvolveRequest(BaseModel):
+    context: str = ""
+    branch: str = "main"
+    confidence: float = 0.5
+
+
+class LearnRequest(BaseModel):
+    source: str = "web"
+    query: str = ""
+    max_results: int = 5
+
+
+class ReflectRequest(BaseModel):
+    context: str = ""
+
+
+class DreamRequest(BaseModel):
+    branch: str = "main"
+
+
+class BranchCreateRequest(BaseModel):
+    name: str
+    parent: str = "main"
+
+
+class BranchMergeRequest(BaseModel):
+    source: str
+    target: str = "main"
+
+
+class PipelineResponse(BaseModel):
+    success: bool
+    pipeline: str
+    data: Dict[str, Any] = {}
+    error: Optional[str] = None
+    duration_ms: float = 0.0
+
+
+# ── Server Class ─────────────────────────────────────────────────────
+
+
+class UltraAPIServer:
+    """FastAPI server wrapping an Omega instance.
+
+    Usage:
+        server = UltraAPIServer(host="0.0.0.0", port=9200)
+        server.start()
+        # Omega is accessible via server.omega
+    """
+
+    def __init__(self, host: str = "0.0.0.0", port: int = 9200, db_path: Optional[str] = None):
+        self.host = host
+        self.port = port
+        self.db_path = db_path
+        self.app = FastAPI(title="Prometheus Ultra API", version="1.0.0")
+        self.omega = None
+        self._server_thread: Optional[threading.Thread] = None
+        self._setup_routes()
+
+    def _setup_routes(self):
+        app = self.app
+
+        @app.get("/api/v1/health")
+        def health():
+            return {"status": "healthy", "service": "prometheus-ultra"}
+
+        @app.get("/api/v1/status")
+        def status():
+            if not self.omega:
+                raise HTTPException(status_code=503, detail="Omega not initialized")
+            s = self.omega.status()
+            return {
+                "node_count": s.node_count,
+                "edge_count": s.edge_count,
+                "active_sessions": s.active_sessions,
+                "uptime_seconds": s.uptime_seconds,
+                "health": s.health,
+                "version": s.version,
+                "mechanisms": s.mechanisms,
+                "details": s.details,
+            }
+
+        @app.post("/api/v1/remember", response_model=PipelineResponse)
+        def remember(req: RememberRequest):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                node_id = self.omega.remember(
+                    content=req.content,
+                    utility=req.utility,
+                    tags=req.tags,
+                )
+                return PipelineResponse(
+                    success=True, pipeline="remember",
+                    data={"node_id": node_id},
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="remember",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        @app.post("/api/v1/recall", response_model=PipelineResponse)
+        def recall(req: RecallRequest):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                results = self.omega.recall(query=req.query, limit=req.limit)
+                hits_data = []
+                for h in results.hits:
+                    hits_data.append({
+                        "node_id": h.node_id,
+                        "score": h.score,
+                        "content": h.content[:500],
+                        "snippet": h.snippet[:200] if h.snippet else "",
+                    })
+                return PipelineResponse(
+                    success=True, pipeline="recall",
+                    data={
+                        "total_count": results.total_count,
+                        "query": results.query,
+                        "duration_ms": results.duration_ms,
+                        "hits": hits_data,
+                        "metadata": _safe_serialize(results.metadata or {}),
+                    },
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="recall",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        @app.post("/api/v1/evolve", response_model=PipelineResponse)
+        def evolve(req: EvolveRequest):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                outcome = self.omega.evolve(
+                    context=req.context,
+                    branch=req.branch,
+                    confidence=req.confidence,
+                )
+                return PipelineResponse(
+                    success=True, pipeline="evolve",
+                    data={
+                        "result": outcome.result.value if hasattr(outcome.result, 'value') else str(outcome.result),
+                        "fitness_before": outcome.fitness_before,
+                        "fitness_after": outcome.fitness_after,
+                        "duration_ms": outcome.duration_ms,
+                        "details": outcome.details,
+                        "metadata": _safe_serialize(outcome.metadata or {}),
+                    },
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="evolve",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        @app.post("/api/v1/learn", response_model=PipelineResponse)
+        def learn(req: LearnRequest):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                result = self.omega.learn(
+                    source=req.source,
+                    query=req.query,
+                    max_results=req.max_results,
+                )
+                # Omega.learn may return a dict or a list depending on state
+                if isinstance(result, dict):
+                    data = result
+                elif isinstance(result, list):
+                    data = {"items": result, "count": len(result)}
+                else:
+                    data = {"result": _safe_serialize(result)}
+                return PipelineResponse(
+                    success=True, pipeline="learn",
+                    data=_safe_serialize(data),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="learn",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        @app.post("/api/v1/reflect", response_model=PipelineResponse)
+        def reflect(req: ReflectRequest):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                result = self.omega.reflect(context=req.context)
+                return PipelineResponse(
+                    success=True, pipeline="reflect",
+                    data=_safe_serialize(result),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="reflect",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        @app.post("/api/v1/dream", response_model=PipelineResponse)
+        def dream(req: DreamRequest):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                result = self.omega.dream_cycle(branch=req.branch)
+                return PipelineResponse(
+                    success=True, pipeline="dream",
+                    data={
+                        "patterns_found": result.patterns_found,
+                        "beliefs_synthesized": result.beliefs_synthesized,
+                        "connections_discovered": result.connections_discovered,
+                        "insights": result.insights,
+                        "dream_data": _safe_serialize(getattr(result, 'dream_data', {})),
+                    },
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="dream",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        @app.post("/api/v1/maintain", response_model=PipelineResponse)
+        def maintain():
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                result = self.omega.maintain()
+                return PipelineResponse(
+                    success=True, pipeline="maintain",
+                    data=_safe_serialize(result),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="maintain",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        @app.post("/api/v1/branch/create")
+        def branch_create(req: BranchCreateRequest):
+            if not self.omega:
+                raise HTTPException(status_code=503, detail="Omega not initialized")
+            self.omega.branch_create(name=req.name, parent=req.parent)
+            return {"success": True, "branch": req.name, "parent": req.parent}
+
+        @app.post("/api/v1/branch/merge")
+        def branch_merge(req: BranchMergeRequest):
+            if not self.omega:
+                raise HTTPException(status_code=503, detail="Omega not initialized")
+            write_id = self.omega.branch_merge(source=req.source, target=req.target)
+            return {"success": True, "write_id": write_id}
+
+        @app.get("/api/v1/branch/list")
+        def branch_list():
+            if not self.omega:
+                raise HTTPException(status_code=503, detail="Omega not initialized")
+            branches = self.omega.branch_list()
+            return {"branches": branches}
+
+        @app.on_event("startup")
+        def startup():
+            if not self.omega:
+                from prometheus_ultra.life import Omega
+                self.omega = Omega(db_path=self.db_path)
+                logger.info("Omega initialized on startup (db=%s)", self.db_path)
+
+    def start(self, omega: Optional[Any] = None, background: bool = True):
+        """Start the API server.
+
+        Args:
+            omega: Pre-initialized Omega instance (optional).
+            background: If True, run in background thread.
+        """
+        if omega:
+            self.omega = omega
+        elif not self.omega:
+            from prometheus_ultra.life import Omega
+            self.omega = Omega(db_path=self.db_path)
+
+        config = uvicorn.Config(
+            self.app,
+            host=self.host,
+            port=self.port,
+            log_level="info",
+            access_log=False,
+        )
+        server = uvicorn.Server(config)
+
+        if background:
+            self._server_thread = threading.Thread(target=server.run, daemon=True)
+            self._server_thread.start()
+            logger.info("Ultra API server starting on %s:%d (background)", self.host, self.port)
+            # Wait for server to be ready
+            import time as _time
+            for _ in range(30):
+                try:
+                    import urllib.request
+                    urllib.request.urlopen(
+                        f"http://127.0.0.1:{self.port}/api/v1/health", timeout=1
+                    )
+                    logger.info("Ultra API server ready on %s:%d", self.host, self.port)
+                    return
+                except Exception:
+                    _time.sleep(0.2)
+            logger.warning("Server may not be ready yet")
+        else:
+            server.run()
+
+    def stop(self):
+        """Stop the server and close Omega."""
+        if self.omega:
+            self.omega.close()
+            self.omega = None
+        logger.info("Ultra API server stopped")
+
+    @property
+    def is_running(self) -> bool:
+        return self._server_thread is not None and self._server_thread.is_alive()
+
+
+def _safe_serialize(obj: Any) -> Any:
+    """Recursively serialize an object to JSON-safe types."""
+    if obj is None:
+        return None
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): _safe_serialize(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_safe_serialize(item) for item in obj]
+    if isinstance(obj, BaseModel):
+        return _safe_serialize(obj.model_dump())
+    # Dataclass (DreamResult, etc.)
+    if hasattr(obj, '__dataclass_fields__'):
+        return _safe_serialize({k: getattr(obj, k) for k in obj.__dataclass_fields__})
+    if hasattr(obj, '__dict__'):
+        return _safe_serialize({k: v for k, v in obj.__dict__.items() if not k.startswith('_')})
+    if hasattr(obj, 'value'):
+        return obj.value
+    return str(obj)
+
+
+# ── CLI Entry ────────────────────────────────────────────────────────
+
+
+def main():
+    """Run the Ultra API server from command line."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Prometheus Ultra API Server")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=9200, help="Port to listen on")
+    parser.add_argument("--db-path", default=None, help="SQLite database path")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
+    server = UltraAPIServer(host=args.host, port=args.port, db_path=args.db_path)
+    server.start(background=False)
+
+
+if __name__ == "__main__":
+    main()

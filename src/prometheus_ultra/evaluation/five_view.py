@@ -1,5 +1,26 @@
-"""FiveViewEvaluator — 5-view comprehensive evaluation."""
+"""FiveViewEvaluator — 5-view comprehensive evaluation.
+
+基于:
+- "Multi-dimensional Quality Assessment Framework" (ISO/IEC 25010)
+  - 记忆维度: 节点丰富度+边连通性+银行利用率
+  - 进化维度: 适应度+收敛奖励
+  - 安全维度: 告警级别映射+失败惩罚
+  - 效率维度: 运行时间+失败率
+  - 一致性维度: 漂移惩罚+边节点比
+
+算法:
+    evaluate(node_count, edge_count, ...):
+        1. 计算5个维度评分(0-1)
+        2. 加权综合评分(w1=0.25, w2=0.25, w3=0.2, w4=0.15, w5=0.15)
+        3. 根据综合评分映射等级(A+/A/A-...D/F)
+
+来源: Omega系统 five_view 评估框架
+"""
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 from dataclasses import dataclass, field
 
 

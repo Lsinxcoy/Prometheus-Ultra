@@ -23,6 +23,10 @@ Algorithm:
         2. Append to parent context with isolation marker
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field

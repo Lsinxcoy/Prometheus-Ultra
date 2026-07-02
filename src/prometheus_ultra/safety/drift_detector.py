@@ -1,5 +1,9 @@
 """DriftDetector — Concept drift detection with PSI and KL divergence."""
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import math
 from collections import Counter
 

@@ -1,16 +1,27 @@
-version: "3.9"
+version: "3.8"
+
 services:
-  omega:
-    build: .
+  omega-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: omega-gateway
     ports:
-      - "8000:8000"
+      - "9201:9201"
     volumes:
-      - ./data:/app/data
+      - omega-data:/app/data
     environment:
-      - OMEGA_DB=/app/data/prometheus_ultra.db
-      - OMEGA_LOG_LEVEL=INFO
+      - OMEGA_HOST=0.0.0.0
+      - OMEGA_PORT=9201
+      - OMEGA_DB_PATH=/app/data/omega.db
     healthcheck:
-      test: ["CMD", "python", "-c", "from prometheus_ultra import Omega; o=Omega(); print(o.status().health)"]
+      test: ["CMD", "curl", "-f", "http://localhost:9201/health"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  omega-data:
+    driver: local

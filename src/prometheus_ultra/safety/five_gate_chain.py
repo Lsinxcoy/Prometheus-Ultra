@@ -10,6 +10,10 @@ Five gates in sequence:
     5. Execute Gate (AURA-Mem action) — pre-action interception
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import math
 from collections import Counter

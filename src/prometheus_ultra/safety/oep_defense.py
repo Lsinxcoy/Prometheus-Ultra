@@ -11,6 +11,10 @@ Key concepts:
       + separate observation from rule formation
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 from dataclasses import dataclass, field
 from collections import Counter

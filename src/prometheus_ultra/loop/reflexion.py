@@ -25,13 +25,17 @@ Complexity: O(A × R) where A = attempts, R = reflection depth
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 
 
 @dataclass
-class Reflection:
+class ReflexionReflection:
     """A verbal reflection on an attempt."""
     attempt: int = 0
     action: str = ""
@@ -47,7 +51,7 @@ class AttemptRecord:
     attempt: int = 0
     action: str = ""
     reward: float = 0.0
-    reflection: Reflection | None = None
+    reflection: ReflexionReflection | None = None
     timestamp: float = 0.0
 
 
@@ -141,7 +145,7 @@ class ReflexionEngine:
         for kw in keywords:
             self._failure_patterns[f"{kw}"] += 1
 
-        reflection = Reflection(
+        reflection = ReflexionReflection(
             attempt=len(self._attempts) + 1,
             action=action, reward=reward,
             critique=critique,

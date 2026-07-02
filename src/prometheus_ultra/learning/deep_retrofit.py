@@ -1,8 +1,25 @@
 """DeepRetrofit — dependency analysis and backward-compatible refactoring.
 
-Implements: dependency mapping, impact analysis, migration planning.
+基于:
+- "Impact-Aware Refactoring" (Mockus & Weiss, 2001) + Omega深度重构引擎
+  - 依赖分析: import/reference/class_usage/method_call/name_reference
+  - 影响评估: 依赖强度均值 × 0.5 + 依赖数量 × 0.05
+  - 迁移规划: 按风险等级(low/medium/high)生成步骤列表
+
+算法:
+    retrofit(context):
+        1. _analyze_dependencies() → 5种依赖类型
+        2. _estimate_impact() → 风险评分+因素
+        3. _plan_migration() → 步骤清单
+        4. _update_dependency_map() → 依赖图谱更新
+
+来源: Omega系统 deep_retrofit 深度重构模块
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import re
 
 

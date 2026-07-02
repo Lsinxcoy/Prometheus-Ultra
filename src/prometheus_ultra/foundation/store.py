@@ -405,8 +405,8 @@ class MinervaStore:
                         "INSERT INTO nodes_fts (id, content, tags, entity_ids, creator_agent, branch) VALUES (?,?,?,?,?,?)",
                         (node.id, node.content, json.dumps(node.tags), "[]", None, node.branch),
                     )
-                except sqlite3.OperationalError:
-                    pass  # FTS table may not exist
+                except sqlite3.OperationalError as e:
+                    logger.warning("FTS insert skipped (table may not exist): %s", e)
 
                 # Log write
                 write_id = generate_uuidv7()
@@ -526,8 +526,8 @@ class MinervaStore:
                     self._conn.execute(
                         "DELETE FROM nodes_fts WHERE id=?", (node_id,)
                     )
-                except sqlite3.OperationalError:
-                    pass
+                except sqlite3.OperationalError as e:
+                    logger.warning("FTS delete skipped: %s", e)
 
                 self._conn.commit()
 
@@ -592,12 +592,12 @@ class MinervaStore:
         Uses FTS5 for efficient text search with LIKE fallback.
 
         Args:
-            query: Search query string.
+            query: Search query string. Return most recent nodes if empty.
             limit: Maximum results to return.
             branch: Branch to search in.
 
         Returns:
-            List of matching nodes, sorted by relevance.
+            List of matching nodes, sorted by relevance (or recency for empty query).
 
         Complexity: O(K·log N) where K = result set size.
         """
@@ -605,7 +605,18 @@ class MinervaStore:
         assert self._conn is not None
 
         if not query or not query.strip():
-            return []
+            # Return most recent nodes instead of empty list
+            with self._lock:
+                try:
+                    rows = self._conn.execute(
+                        """SELECT * FROM nodes
+                           WHERE branch=? AND tx_to=0.0
+                           ORDER BY created_at DESC LIMIT ?""",
+                        (branch, limit),
+                    ).fetchall()
+                    return [self._row_to_node(r) for r in rows]
+                except sqlite3.Error:
+                    return []
 
         with self._lock:
             # Try FTS5 first
@@ -618,8 +629,8 @@ class MinervaStore:
                     (query, branch, limit),
                 ).fetchall()
                 return [self._row_to_node(r) for r in rows]
-            except (sqlite3.OperationalError, sqlite3.OperationalError):
-                pass
+            except (sqlite3.OperationalError, sqlite3.OperationalError) as e:
+                logger.warning("FTS search failed, falling back to LIKE: %s", e)
 
             # Fallback to LIKE search
             try:
@@ -997,8 +1008,8 @@ class MinervaStore:
             if self._conn:
                 try:
                     self._conn.close()
-                except sqlite3.Error:
-                    pass
+                except sqlite3.Error as e:
+                    logger.warning("Failed to close store connection: %s", e)
                 self._conn = None
                 self._connected = False
                 logger.info("MinervaStore closed")

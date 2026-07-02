@@ -8,6 +8,10 @@ Judge-free variant reduces tokens by 38% at parity quality.
 Quality-gated variant is counter-productive (judging cost dominates).
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 from collections import Counter
 from dataclasses import dataclass, field
 import math

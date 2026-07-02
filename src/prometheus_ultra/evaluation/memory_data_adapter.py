@@ -8,6 +8,10 @@ Maps Ultra's memory interface to MemoryData's evaluation interface:
 - Ultra.evolve() → MemoryData skill injection
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 from dataclasses import dataclass, field
 
 

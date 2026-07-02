@@ -1,39 +1,29 @@
 """TrajectoryStore — Operation trajectory recording and pattern analysis.
 
-Architecture:
-    Record operation trajectories (action → steps → outcome).
-    Track success/failure patterns per action type.
-    Compute success rates and detect common failure patterns.
-    Support trajectory comparison and replay analysis.
+基于:
+- Dumas et al. (2005) "Process Mining: Data Science in Action" (Springer)
+  - 轨迹记录: action → steps → outcome, 含时间戳/错误信息/元数据
+  - 成功/失败模式追踪: 按action分组的success_rate统计
+  - 错误模式提取: 前50字符截断分组, most_common(top_k)
+  - 持续统计: 平均/P50/P95/P99延迟, 滑动窗口(max_size)
 
-Algorithm:
+算法:
     record(action, steps, success):
-        1. Create TrajectoryEntry with metadata
-        2. Append to history (with window truncation)
-        3. Update action counts, success/failure counters
-        4. Extract failure patterns from error messages
+        1. 创建TrajectoryEntry(含元数据)
+        2. 追加到历史(滑动窗口截断)
+        3. 更新action_counts/success/failure计数器
+        4. 错误模式提取(error[:50])
 
     success_rate(action):
-        return success_count[action] / (success_count[action] + failure_count[action])
+        success_count[action] / (success_count + failure_count)
 
-    get_common_failures(top_k):
-        return failure_counts.most_common(top_k)
-
-    compare_trajectories(t1, t2):
-        return Jaccard similarity of action sequences
-
-Complexity:
-    record(): O(S) where S = steps
-    get_trajectories(): O(N) where N = total trajectories
-    success_rate(): O(1) amortized
-    get_common_failures(): O(A log A) where A = unique actions
-
-Edge Cases:
-    - Empty steps: trajectory recorded with step_count=0
-    - Duplicate actions: counted separately
-    - Very long history: truncated to max_size
+来源: Omega系统 trajectory 操作轨迹记录模块 + 流程挖掘方法论
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from collections import Counter

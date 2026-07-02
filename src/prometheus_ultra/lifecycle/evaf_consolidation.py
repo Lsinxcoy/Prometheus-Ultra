@@ -7,6 +7,10 @@ EVAF selects which memories to consolidate based on surprise and valence.
 Only 2-3 parametric writes per 200 events needed.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 from dataclasses import dataclass
 
 

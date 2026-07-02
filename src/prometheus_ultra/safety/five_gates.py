@@ -1,10 +1,31 @@
 """FiveGates — Cascading gate system with dynamic thresholds.
 
-Enhanced with dynamic threshold adaptation based on:
-- System load and write patterns
-- Adaptive threshold adjustment
+基于:
+- "Adaptive Threshold Control for Memory Filtering" + Omega五门管道
+  - 效用门: utility ≥ dynamic_min_utility
+  - 惊奇门: surprise ≤ dynamic_max_surprise
+  - 内容门: content非空
+  - 容量门: node_count < max_nodes
+  - 标签门: 默认通过
+
+算法:
+    evaluate(node, context):
+        1. 获取动态阈值(基于历史utility/surprise)
+        2. 五门依次检查
+        3. 全部通过→记录pass历史
+        4. 自适应调整阈值(pass_rate>0.9→提高; <0.3→降低)
+
+    _adapt_thresholds():
+        1. 最近20次通过率>0.9 → min_utility += 0.01
+        2. 最近20次通过率<0.3 → min_utility -= 0.01
+
+来源: Omega系统 five_gates 级联门控 + MiMo动态阈值机制
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 from prometheus_ultra.foundation.schema import CascadeResult, GateCheckResult, Node
 

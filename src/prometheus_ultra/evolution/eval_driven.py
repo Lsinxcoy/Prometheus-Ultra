@@ -7,6 +7,10 @@ Based on M* (arXiv:2604.11811) evolutionary approach:
 - Tracks convergence via best/avg fitness over generations
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import random
 import time
 from dataclasses import dataclass, field

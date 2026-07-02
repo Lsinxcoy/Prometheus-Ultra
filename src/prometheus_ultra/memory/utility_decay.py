@@ -15,6 +15,10 @@ Memory vs Knowledge layer:
     - Knowledge layer (facts/frameworks): no decay, only supersedes replacement
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass

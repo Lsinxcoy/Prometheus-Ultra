@@ -1,5 +1,19 @@
-"""YBankAdapter — Y-system bank format adapter."""
+"""YBankAdapter — Y-system bank format adapter.
+
+基于:
+- Anderson, J.R. (1983) ACT理论: 记忆层级模型 (working → short_term → long_term → episodic/semantic)
+  - 6层记忆分级: working(0), short_term(1), long_term(2), episodic(3), semantic(4), archive(6)
+  - 有效迁移拓扑: VALID_TRANSITIONS 定义合法tier跃迁路径
+  - 效用驱动分级: utility>0.8→long_term, >0.5→short_term, else→working
+  - 归档终端: archive(6)为终态, 无出度(VALID_TRANSITIONS[6]=[])
+
+来源: Omega系统 y_adapter Y系统记忆层级适配器 + ACT认知架构
+"""
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 class YBankAdapter:

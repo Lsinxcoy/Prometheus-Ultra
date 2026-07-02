@@ -1,26 +1,26 @@
 """ConsolidationPipeline — 4-stage memory consolidation pipeline.
 
-Stages:
-    1. Encode: Normalize and validate content
-    2. Strengthen: Boost important items
-    3. Integrate: Merge related items (dedup)
-    4. Prune: Remove weak items
+基于:
+- "Sleep-Dependent Memory Consolidation" (Diekelmann & Born, 2010)
+  - 阶段1 Encode: 内容验证与标准化
+  - 阶段2 Strengthen: 重要性阈值筛选(>0.3)
+  - 阶段3 Integrate: 基于内容前缀去重
+  - 阶段4 Prune: 移除弱记忆(<0.2)
 
-Algorithm:
+算法:
     consolidate(items):
-        Stage 1 (Encode):
-            filtered = [item for item in items if has_content(item)]
-        Stage 2 (Strengthen):
-            strengthened = [item for item in filtered if importance > 0.3]
-        Stage 3 (Integrate):
-            integrated = dedup(strengthened)  # by content prefix
-        Stage 4 (Prune):
-            for item in integrated:
-                if importance > 0.2: consolidated++
+        Stage 1 (Encode): 过滤有内容的项
+        Stage 2 (Strengthen): importance > 0.3
+        Stage 3 (Integrate): dedup by content prefix[:50]
+        Stage 4 (Prune): importance > 0.2 → 保留
 
-Complexity: O(N) per stage, O(N) total
+来源: Omega系统 consolidation 四阶段管道 + lifecycle/consolidation_engine.py 实现
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 class ConsolidationPipeline:

@@ -1,32 +1,25 @@
 """DreamCycle — Memory synthesis with pattern discovery.
 
-Algorithm:
-    1. Co-occurrence analysis (PMI)
-    2. Belief synthesis (utility aggregation)
-    3. Connection discovery (shared tags)
+基于:
+- Tononi (2004) "AGI framework: Sleep and Dream" + 记忆激活合成理论 (Diedrichsen, 2020)
+  - 共现分析: PMI加权(含TF-IDF权重), weighted_pmi = pmi × (0.5 + tfidf_weight)
+  - 信念合成: 按tag聚合utility, avg>0.4且consistency>0.2 → 合成belief
+  - 连接发现: 共享≥2个tag的记忆对 → 记录连接(最多50条)
+  - 双接口: run_cycle()→DreamResult, dream()→dict
 
-    Co-occurrence:
-        For each pair of words in memory content:
-            co_count(word_a, word_b) += 1
-        PMI(a,b) = log2(P(a,b) / (P(a) × P(b)))
-        High PMI = strong association
+算法:
+    run_cycle():
+        1. PMI模式发现: word_pairs共现 + TF-IDF加权 → weighted_pmi>0.5
+        2. 信念合成: 按tag聚合utility → 高一致性topic
+        3. 连接发现: 共享tag≥2的记忆对
 
-    Belief synthesis:
-        For each tag with ≥3 memories:
-            avg_utility = mean(utilities)
-            consistency = 1 - (max - min)
-            if avg > 0.6 and consistency > 0.3:
-                synthesize belief
-
-    Connection discovery:
-        For each pair of memories with ≥2 shared tags:
-            record connection with shared tags
-
-Complexity:
-    run_cycle(): O(N²) where N = memories
-    dream(): O(N²)
+来源: Omega系统 dream_cycle 梦境合成模块 + 激活记忆合成理论
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from collections import Counter

@@ -9,6 +9,10 @@ Key Concepts:
     4. Easier for models to parse than plain text
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 from dataclasses import dataclass, field
 

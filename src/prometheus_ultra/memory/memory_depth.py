@@ -6,6 +6,10 @@ Key insight: memory depth (durable tendencies) is distinct from and
 complementary to memory access (retrieval). Need to track both.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import time
 from dataclasses import dataclass
 

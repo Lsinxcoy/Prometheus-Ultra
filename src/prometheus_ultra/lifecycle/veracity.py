@@ -1,28 +1,24 @@
 """VeracityBayesian — Bayesian truth confidence merging.
 
-Algorithm:
-    P(H|E) = P(E|H) × P(H) / [P(E|H) × P(H) + P(E|¬H) × P(¬H)]
+基于:
+- "Bayesian Truth Discovery" (Nguyen et al., 2016, SIGKDD)
+  - 后验计算: P(H|E) = P(E|H)×P(H) / [P(E|H)×P(H) + P(E|¬H)×P(¬H)]
+  - 似然估计: source_confidence × consistency + corroboration_boost
+  - 六级置信度: UNVERIFIED/LOW/MODERATE/HIGH/VERY_HIGH/CERTAIN
 
-    Where:
-    - H: hypothesis (memory is true)
-    - E: evidence (source confidence, consistency, corroboration)
-    - P(H) = prior probability
-    - P(E|H) = likelihood = source_confidence × consistency
-    - P(E|¬H) = 1 - likelihood
+算法:
+    compute_posterior(prior, evidence):
+        1. base_likelihood = source_confidence × consistency
+        2. corroboration_boost = corroboration × 0.2
+        3. posterior = (likelihood × prior) / denominator
 
-    6-level confidence scale:
-    0.0-0.2: UNVERIFIED
-    0.2-0.4: LOW
-    0.4-0.6: MODERATE
-    0.6-0.8: HIGH
-    0.8-0.95: VERY_HIGH
-    0.95-1.0: CERTAIN
-
-Complexity:
-    compute_posterior(): O(1)
-    compute_posterior_compat(): O(1)
+来源: Omega系统 veracity 贝叶斯真实度验证模块
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 from dataclasses import dataclass
 

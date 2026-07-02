@@ -48,6 +48,10 @@ Usage:
     scale = ti.get_compressed_scale()
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import math
 from collections import deque

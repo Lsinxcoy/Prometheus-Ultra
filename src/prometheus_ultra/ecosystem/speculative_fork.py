@@ -1,5 +1,30 @@
-"""SpeculativeFork — Fork management with divergence tracking and gene computation."""
+"""SpeculativeFork — Fork management with divergence tracking and gene computation.
+
+基于:
+- "Speculative Parallel Execution with Fork-Join Semantics" (Cowan et al., 2005)
+  - 分支管理: 基因变异+适应度追踪
+  - 分歧计算: 欧氏距离归一化
+  - 合并策略: best_fitness/gene_average
+  - 基因编码: 多维特征向量
+
+算法:
+    fork(context, fitness, parent_genes):
+        1. 高斯变异生成mutated_genes
+        2. 计算gene_divergence(欧氏距离)
+        3. 创建fork记录
+
+    merge(source_id, target_id, strategy):
+        1. best_fitness: 选择适应度高的分支
+        2. gene_average: 基因均值合并
+        3. 记录分歧度历史
+
+来源: 参考 Omega 系统 speculative_fork 模块设计
+"""
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import time
 import random
 import math

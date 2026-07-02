@@ -12,6 +12,10 @@ Each source has a specific scan pattern and result format.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import json
 import re
 import time

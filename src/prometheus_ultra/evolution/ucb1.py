@@ -1,21 +1,29 @@
 """UCB1Bandit — Upper Confidence Bound strategy selection.
 
-Algorithm:
-    UCB1: aᵢ = x̄ᵢ + √(2·ln(n)/nᵢ)
-    Where:
-    - x̄ᵢ = average reward for arm i
-    - n = total pulls
-    - nᵢ = pulls for arm i
+基于:
+- "Finite-Time Analysis of the Multi-Armed Bandit Problem" (Auer et al., 2002)
+  - UCB1公式: aᵢ = x̄ᵢ + √(2·ln(n)/nᵢ)
+  - x̄ᵢ = 臂i的平均奖励
+  - n = 总拉次数, nᵢ = 臂i的拉次数
+  - 冷启动: 未访问臂优先选择
+  - 探索-利用平衡: 高不确定性臂获得额外探索奖励
 
-    Select arm with highest UCB1 value.
+算法:
+    select():
+        1. 有未访问臂→返回(冷启动)
+        2. 对每个臂: UCB = avg + √(2×ln(total)/count)
+        3. 返回UCB最大的臂
 
-    Cold start: unvisited arms are selected first.
+    update(arm, reward):
+        1. count[arm] += 1, value[arm] += reward
 
-Complexity:
-    Select: O(K) where K = number of arms
-    Update: O(1)
+来源: Omega系统 ucb1 上置信界策略选择模块 + 多臂老虎机算法
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 import math
 import random
 

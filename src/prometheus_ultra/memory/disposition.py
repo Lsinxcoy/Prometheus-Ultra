@@ -1,33 +1,30 @@
 """DispositionLearner — Behavioral disposition learning from value patterns.
 
-Architecture:
-    Track value distributions per pattern key.
-    Compute running statistics (mean, variance, skewness).
-    Detect disposition shifts (mean change > threshold).
-    Learn behavioral dispositions for prediction.
+基于:
+- "Online Change Detection with CUSUM" (Page, 1954) + Omega行为倾向学习
+  - 运行统计: Welford算法计算均值/方差
+  - 偏移检测: |new_mean - old_mean| > threshold → CUSUM-like
+  - 趋势预测: 线性回归(slope)预测下一个值
+  - 波动性分析: 方差排序找出最不稳定/最稳定模式
 
-Algorithm:
-    For each pattern_key:
-        1. Append value to history
-        2. Compute running mean and variance (Welford's algorithm)
-        3. Detect shifts: |new_mean - old_mean| > threshold
-        4. Predict: return current mean disposition
+算法:
+    learn(pattern_key, value):
+        1. 追加值到历史(上限max_values)
+        2. 计算新均值(运行统计)
+        3. 检测偏移: |new_mean - old_mean| > threshold
 
-    Disposition = average behavioral tendency for a pattern.
-    Shift detection usesCUSUM-like mechanism.
+    predict(pattern_key):
+        1. 线性回归计算slope
+        2. prediction = last_value + slope
+        3. confidence = min(1.0, n/20)
 
-Complexity:
-    learn(): O(1) amortized
-    get_disposition(): O(1)
-    get_variance(): O(N) where N = values for pattern
-    detect_shifts(): O(N)
-
-Edge Cases:
-    - Single value: variance = 0
-    - All identical values: no shifts detected
-    - Very long history: truncated to max_values
+来源: Omega系统 disposition 行为倾向学习模块 + MiMo模式追踪
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import math
 import time

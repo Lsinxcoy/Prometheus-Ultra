@@ -448,6 +448,7 @@ class SearchResults:
     total_count: int = 0
     query: str = ""
     duration_ms: float = 0.0
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -465,6 +466,7 @@ class EvolutionOutcome:
     fitness_after: float = 0.0
     duration_ms: float = 0.0
     details: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

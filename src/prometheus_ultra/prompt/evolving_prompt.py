@@ -35,9 +35,14 @@ Algorithm:
 """
 from __future__ import annotations
 
+
+
+import logging
+
 import time
 import re
 from dataclasses import dataclass, field
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -190,8 +195,8 @@ class EvolvingPrompt:
                     import json
                     json.loads(output)
                     format_compliance = 1.0
-                except:
-                    feedback.append("Output is not valid JSON")
+                except Exception as e:
+                    feedback.append(f"Output is not valid JSON: {e}")
                     format_compliance = 0.0
             elif expected_format == "markdown":
                 if re.search(r'#+\s', output) or re.search(r'\*\*.*\*\*', output):

@@ -15,6 +15,10 @@ Algorithm:
     4. Recommend tool pruning when overload detected
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field

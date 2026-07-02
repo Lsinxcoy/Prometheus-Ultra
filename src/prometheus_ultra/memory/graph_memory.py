@@ -169,9 +169,11 @@ class GraphMemory:
 
         Complexity: O(1).
         """
-        if source not in self._episodes or target not in self._episodes:
-            logger.warning("Cannot add edge: episode not found (source=%s, target=%s)", source, target)
-            return False
+        if source not in self._episodes:
+            # Auto-create placeholder for cross-references to DB nodes
+            self._episodes[source] = EpisodeEvent(episode_id=source)
+        if target not in self._episodes:
+            self._episodes[target] = EpisodeEvent(episode_id=target)
 
         edge = Edge(source=source, target=target, relation=relation, weight=weight)
 

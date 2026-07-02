@@ -9,6 +9,10 @@ Four cycles:
     4. Consolidation (every 12h): Deduplicate registry, compress logs
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field

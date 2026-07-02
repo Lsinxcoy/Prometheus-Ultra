@@ -4,6 +4,10 @@ Based on: obra/superpowers systematic-debugging skill
 Key insight: Isolate → Hypothesize → Verify → Fix, never guess.
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from dataclasses import dataclass, field

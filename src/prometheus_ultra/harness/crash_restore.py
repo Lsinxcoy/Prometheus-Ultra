@@ -11,11 +11,16 @@ Key Concepts:
 """
 from __future__ import annotations
 
+
+
+import logging
+
 import hashlib
 import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -108,8 +113,8 @@ class CrashStateRestore:
             for cp in to_remove:
                 try:
                     Path(cp.file_path).unlink(missing_ok=True)
-                except OSError:
-                    pass
+                except OSError as e:
+                    logger.warning("Failed to remove old checkpoint: %s", e)
             self._checkpoints = self._checkpoints[-self._max:]
 
     def list_checkpoints(self) -> list[dict]:

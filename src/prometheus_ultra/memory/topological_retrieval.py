@@ -9,8 +9,13 @@ Key concepts:
 """
 from __future__ import annotations
 
+
+
+import logging
+
 import time
 from dataclasses import dataclass, field
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -58,8 +63,8 @@ class TopologicalRetrieval:
                         content=content[:500],
                         temporal_weight=temporal_weight,
                     ))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Topological retrieval failed for node: %s", e)
 
         hits.sort(key=lambda h: h.score, reverse=True)
         hits = hits[:limit]

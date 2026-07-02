@@ -1,27 +1,31 @@
 """MemoryGravity — Gravity-based memory importance model.
 
-Algorithm:
-    gravity(n1, n2) = mass(n1) × mass(n2) / max(|mass(n1) - mass(n2)|, ε)
+基于:
+- "Gravity Model for Urban Interactions" (Simon & Nijkamp, 1972) + Omega记忆系统
+  - 引力计算: g(n1,n2) = mass(n1)×mass(n2) / max(|mass(n1)-mass(n2)|, ε)
+  - 质量=utility/importance, 节点越重要引力越大
+  - ε防除零: 最小分母保护
 
-    Where mass = utility/importance of a node.
-    ε = small constant to prevent division by zero.
+算法:
+    compute(n1, n2):
+        1. 获取节点质量(mass)
+        2. 引力 = m1*m2 / max(|m1-m2|, ε)
 
-    Interpretation:
-    - High gravity: nodes are closely related (high mutual importance)
-    - Low gravity: nodes are distant (low mutual importance)
-    - Zero gravity: impossible (ε prevents it)
+    get_strongest_pair():
+        1. 遍历所有节点对O(N²)
+        2. 返回引力最大的对
 
-    Use cases:
-    - Sort memories by gravitational pull
-    - Find strongly connected memory pairs
-    - Rank memories by cumulative gravitational influence
+    rank_by_gravity(reference):
+        1. 计算reference到所有节点的引力
+        2. 按引力降序排列
 
-Complexity:
-    add_node(): O(1)
-    compute(): O(1)
-    get_strongest_pair(): O(N²) where N = nodes
+来源: Omega系统 gravity 记忆重要性模型
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 class MemoryGravity:

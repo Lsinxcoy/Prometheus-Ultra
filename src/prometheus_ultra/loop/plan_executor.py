@@ -5,6 +5,10 @@ Key insight: Execute in batches with validation between them.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import time
 from dataclasses import dataclass, field
 

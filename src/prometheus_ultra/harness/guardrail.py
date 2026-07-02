@@ -5,6 +5,10 @@ Enhanced with prompt injection detection based on:
 - Anthropic safety best practices
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import re
 from dataclasses import dataclass
@@ -73,6 +77,10 @@ class InputGuardrail:
     def check(self, content: str) -> GuardrailResult:
         self._checks += 1
         violations = []
+        
+        # Handle non-string content (e.g., dict)
+        if not isinstance(content, str):
+            content = str(content)
 
         if not content or not content.strip():
             self._blocked += 1

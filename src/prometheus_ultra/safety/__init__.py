@@ -5,7 +5,6 @@ from prometheus_ultra.safety.equilibrium_guard import EquilibriumGuard
 from prometheus_ultra.safety.rl_pathology import RLPathologyDetector
 from prometheus_ultra.safety.circuit_breaker import CircuitBreaker
 from prometheus_ultra.safety.drift_detector import DriftDetector
-from prometheus_ultra.safety.zscore import ZScoreAnomaly
-from prometheus_ultra.safety.trend import TrendPredictor
+from prometheus_ultra.safety.zscore import ZScoreDetector
+from prometheus_ultra.safety.trend import TrendDetector, TrendPredictor
 from prometheus_ultra.safety.self_healing import SelfHealingEngine
-from prometheus_ultra.safety.constitution import Constitution

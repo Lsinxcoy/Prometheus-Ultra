@@ -39,6 +39,10 @@ Complexity:
     get_avoidance_list(): O(A log A) where A = unique actions
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import time
 from collections import Counter

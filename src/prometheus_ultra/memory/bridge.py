@@ -1,49 +1,28 @@
 """KnowledgeBridge — Cross-domain knowledge bridging with concept alignment.
 
-Architecture:
-    Extract concepts from content (stopword filtering + n-gram extraction).
-    Maintain per-domain concept frequency counters.
-    Compute cross-domain transfer score via concept overlap metrics.
-    Track bridge history for transfer learning analysis.
+基于:
+- Caruana (1997) "Multitask Learning" + 迁移学习概念对齐 (Taylor & Stone, 2016)
+  - 概念提取: 停用词过滤(300+) + 长度过滤 + bigram提取
+  - 跨域相似度: Jaccard(|C1∩C2|/|C1∪C2|) + transfer_score(|shared|/√(|D1|×|D2|))
+  - 域概念频率索引: 每域维护Counter, 自动修剪至max_concepts(500)
+  - 传递矩阵: 所有域对的transfer_score全矩阵
 
-Algorithm:
-    1. Extract concepts from content (stopword filtering, length filter)
-    2. Build per-domain concept frequency index
-    3. Compute cross-domain similarity:
-       - Jaccard similarity: |C1 ∩ C2| / |C1 ∪ C2|
-       - Transfer score: |shared| / √(|domain1| × |domain2|)
-       - PMI-like: co_occurrence / (freq1 × freq2)
-    4. Track bridge history for temporal analysis
+算法:
+    bridge(content, domain):
+        1. 提取概念(停用词过滤+bigram)
+        2. 更新域概念频率Counter
+        3. 超max_concepts→保留Top-K最频繁
 
-Concept Extraction:
-    - Remove stopwords (300+ common English words)
-    - Filter by minimum length (default: 3 chars)
-    - Lowercase normalization
-    - Optional: n-gram extraction (bigrams, trigrams)
+    transfer_score(source, target):
+        |shared_concepts| / √(|source_concepts| × |target_concepts|)
 
-Transfer Score:
-    transfer_score = |shared_concepts| / √(|domain1_concepts| × |domain2_concepts|)
-
-    This is a normalized overlap metric:
-    - 0.0 = no shared concepts (no transfer possible)
-    - 1.0 = identical concept sets (maximum transfer)
-
-Complexity:
-    bridge(): O(C) where C = concepts in content
-    find_cross_domain_concepts(): O(|D1| ∩ |D2|)
-    transfer_score(): O(√(|D1| × |D2|))
-    get_domain_bridges(): O(B) where B = bridges for domain
-
-Edge Cases:
-    - Empty content: no concepts extracted
-    - Single domain: no cross-domain transfer possible
-    - No shared concepts: transfer_score = 0
-    - Very large domains: limited to top-K concepts
-
-Thread Safety:
-    - Not thread-safe. Use external lock if needed.
+来源: Omega系统 bridge 跨域知识桥接模块 + 迁移学习概念对齐
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import math
 import time

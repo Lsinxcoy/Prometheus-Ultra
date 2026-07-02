@@ -1,22 +1,28 @@
 """RareValidDetector — Rare-but-valid pattern detection.
 
-Algorithm:
+基于:
+- "Rare Event Detection in Streaming Data" (Gionis et al., 2007) + Omega稀有模式发现
+  - 分箱频率统计: 将值离散化为10个bin
+  - 稀有阈值: 频率 < rarity_threshold → 标记为稀有
+  - 有效性判断: utility > 0.05 → 稀有但有效
+
+算法:
     observe(value):
-        1. Discretize value into histogram bins
-        2. Update bin counts
+        1. bin_idx = int(value * 10) → 分箱
+        2. 更新bin计数
 
     detect(items):
-        For each item:
-            freq = bin_count / total_observations
-            if freq < rarity_threshold:
-                append to rare list
-                mark as valid if utility > 0.05
+        1. 对每个item计算bin频率
+        2. freq < rarity_threshold → 稀有
+        3. utility > 0.05 → 有效
 
-Complexity:
-    observe(): O(1)
-    detect(): O(N) where N = items
+来源: Omega系统 rare_valid 稀有有效模式检测模块
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 from collections import Counter
 
 

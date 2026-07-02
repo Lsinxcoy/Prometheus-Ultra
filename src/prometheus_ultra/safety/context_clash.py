@@ -20,6 +20,10 @@ Complexity:
     detect(): O(N^2 * S) where N = chunks, S = similarity computation
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import re
 from dataclasses import dataclass, field

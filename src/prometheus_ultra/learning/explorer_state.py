@@ -1,10 +1,22 @@
 """ExplorerState — Track exploration rounds and focus areas.
 
-From MiMo Self-Evolution: "轮次计数/焦点领域索引"
+基于:
+- MiMo Self-Evolution 探索状态追踪 (X系统) + 信息增益驱动的自适应探索
+  - 轮次计数: 每日探索轮次追踪, ≥10轮触发修订, ≥20轮停止
+  - 焦点领域索引: 按domain统计探索频率, max(domain_counts) = 焦点
+  - 信息增益记录: 每轮记录info_gain, 持久化到explorer_state.json
+  - 自适应决策: should_insert_revision/should_stop 基于轮次阈值
+
+来源: Omega系统 explorer_state 探索状态追踪模块 + MiMo自我进化框架
 """
 from __future__ import annotations
+
+
+
+import logging
 import time, json, os
 from dataclasses import dataclass, field
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -36,7 +48,8 @@ class ExplorerState:
                 self._today_rounds = data.get("today", [])
                 self._domain_counts = data.get("domains", {})
                 self._total_rounds = data.get("total", 0)
-            except: pass
+            except Exception as e:
+                logger.warning("Failed to load explorer state: %s", e)
 
     def _flush(self):
         parent = os.path.dirname(self._path)

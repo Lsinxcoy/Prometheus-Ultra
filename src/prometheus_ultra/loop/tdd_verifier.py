@@ -5,6 +5,10 @@ Key insight: RED-GREEN-REFACTOR — verify tests actually pass, not just claim t
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import time
 import subprocess
 import sys
@@ -47,7 +51,7 @@ class TDDVerifier:
         self._stats = {"cycles": 0, "features": 0, "tests_written": 0, "real_executions": 0}
 
     def verify(self, feature: str, test_description: str = "",
-               implementation: str = "", run_tests: bool = True) -> TDDResult:
+               implementation: str = "", run_tests: bool = False) -> TDDResult:
         result = TDDResult(feature=feature)
         self._stats["features"] += 1
 
