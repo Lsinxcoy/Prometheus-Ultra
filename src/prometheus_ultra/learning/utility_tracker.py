@@ -22,10 +22,11 @@ class UtilityTracker:
         avg = tracker.get_average("node_123")
     """
 
-    def __init__(self, decay_rate: float = 0.01, reference_boost: float = 0.05):
+    def __init__(self, decay_rate: float = 0.01, reference_boost: float = 0.05, negative_decay: float = 0.05):
         self._entries: dict[str, dict] = {}
         self._decay_rate = decay_rate
         self._reference_boost = reference_boost
+        self._negative_decay = negative_decay
         self._stats = {"registered": 0, "usages": 0}
 
     def register(self, node_id: str, initial_utility: float = 0.5):
@@ -78,7 +79,15 @@ class UtilityTracker:
             entry = self._entries[node_id]
             entry["negative_refs"] = entry.get("negative_refs", 0) + 1
             if entry["utilities"]:
-                entry["utilities"][-1] = max(0.0, entry["utilities"][-1] - 0.05)
+                entry["utilities"][-1] = max(0.0, entry["utilities"][-1] - self._negative_decay)
+
+    @property
+    def negative_decay(self) -> float:
+        return self._negative_decay
+
+    @negative_decay.setter
+    def negative_decay(self, value: float):
+        self._negative_decay = max(0.0, min(1.0, value))
 
     def get_utility_history(self, node_id: str) -> list[float]:
         if node_id in self._entries:

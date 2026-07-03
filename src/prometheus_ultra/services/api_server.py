@@ -338,6 +338,8 @@ class UltraAPIServer:
             try:
                 if not self.omega:
                     raise HTTPException(status_code=503, detail="Omega not initialized")
+                # 自动注册未注册的节点（反沉默失败）
+                self.omega.utility_tracker.register(req.node_id)
                 if req.was_useful:
                     self.omega.utility_tracker.record_reference(req.node_id)
                 else:

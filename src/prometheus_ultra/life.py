@@ -754,6 +754,7 @@ class Omega:
         remember_data['dopa_dist'] = self.dopamine.get_score_distribution()
 
         logger.info("Remembered: %s (confidence: %s)", node.id[:8], conf_level)
+        self.utility_tracker.register(node.id, initial_utility=utility)
         return node.id
 
     # ============================================================
@@ -1661,7 +1662,7 @@ class Omega:
             "diagnostics": reflect_diagnostics,
         }
 
-        self.event_bus.publish({"type": "reflect_completed", "composite_score": fv.composite_score, "drift_alerts": len(drift) if 'drift' in dir() else 0})
+        self.event_bus.publish({"type": "reflect_completed", "composite_score": fv.composite_score, "drift_alerts": len(drift)})
 
     # ============================================================
     # dream pipeline
@@ -2028,10 +2029,9 @@ class Omega:
             self.dopamine.reset()
 
         # 活性检查：激活低调用频率的机制
-        self.heartbeat_4cycle.run_cycles()
-        self.capability_ceiling.should_add_agents()
-        self.cognitive_collapse.detect()
-        self.rule_expiration.audit()
+        # Note: heartbeat, capability_ceiling, cognitive_collapse, rule_expiration
+        # are also called earlier in maintain() (see MiMo blocks).
+        # This block adds: loop_selector + agent_forest.
         loop_cfg = self.loop_selector.select("maintain")
         self.loop_selector.record_outcome(loop_cfg.strategy, self._compute_fitness())
         self.agent_forest.record_performance("maintainer", self._compute_fitness())
