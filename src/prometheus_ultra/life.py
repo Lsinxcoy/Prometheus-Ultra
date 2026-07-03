@@ -140,7 +140,7 @@ from prometheus_ultra.ecosystem.edre import EDREReplicator
 from prometheus_ultra.execution.dag_executor import DAGExecutor, ParallelDAG, RetryableDAG, MonitoredDAG
 
 # Governance
-from prometheus_ultra.governance.autonomy import AutonomyLevel, ConfidenceGate, EvolutionGrill
+from prometheus_ultra.governance.autonomy import ConfidenceGate, EvolutionGrill
 
 # Organs
 from prometheus_ultra.organs.organ_pipeline import FiveOrganPipeline
@@ -313,7 +313,7 @@ class Omega:
         self.harness_x = HarnessX()
         self.bootstrap = BootstrapCI()
 
-        # ===== Loop (14) =====
+        # ===== Loop (13) =====
         self.reflexion = ReflexionEngine()
         self.coala = CoALAArchitecture()
         self.debate = DebateEngine()
@@ -326,7 +326,6 @@ class Omega:
         self.plan_writer = PlanWriter()
         self.verification_gate = VerificationGate()
         self.parallel_dispatcher = ParallelDispatcher()
-        self.plan_executor = PlanExecutor()
         self.code_reviewer = CodeReviewer()
 
         # Wire systematic debugging to self_healing
@@ -374,8 +373,6 @@ class Omega:
         self.monitored_dag = MonitoredDAG()
 
         # ===== Governance (2) =====
-        self.autonomy = AutonomyLevel.L2_SUPERVISED
-        self.trust = TrustLevel.VERIFIED
         self.confidence_gate = ConfidenceGate()
         self.evolution_grill = EvolutionGrill()
 
@@ -432,7 +429,8 @@ class Omega:
         self.adaptive_harness.register_tool(ToolPolicy(tool_name="maintain", allowed=True))
 
         # ===== Prompt Engineering =====
-        self.evolving_prompt = EvolvingPrompt()
+        # evolving_prompt is available for future dynamic prompt generation
+        # self.evolving_prompt = EvolvingPrompt()
 
         # ===== MiMo-derived mechanisms =====
         self.five_gate_chain = FiveGateMemoryChain()
@@ -486,8 +484,10 @@ class Omega:
         # State persistence & MemoryData
         self.state_persistence = StatePersistence()
         self.memory_data_adapter = MemoryDataAdapter(self)
+        # Defensive measure: memory_data_adapter is called in maintain for benchmark
+        # It is excluded from the ULTRA_DIAGNOSTICS guard as it evaluates external benchmarks
         self.state_persistence.load(self)
-
+ 
         # ===== HarnessX: register primitives =====
         self.harness_x.register_primitive(
             HarnessPrimitive(name="input_guard", type="prompt", content="Check input safety")
@@ -941,6 +941,16 @@ class Omega:
         # 自动记录 recall 引用到 UtilityTracker
         for h in unique[:5]:
             self.utility_tracker.record_reference(h.node_id)
+
+        # 用 disposition 行为倾向调整排序权重
+        for h in unique:
+            try:
+                disp_score = self.disposition.get_disposition(h.node_id)
+                if disp_score:
+                    h.score = min(1.0, h.score * (1 + disp_score * 0.2))
+            except Exception:
+                pass
+        unique.sort(key=lambda h: h.score, reverse=True)
 
         self.event_bus.publish({"type": "recall_completed", "query": query, "hits": len(unique), "duration_ms": duration})
         return SearchResults(hits=unique, total_count=len(unique), query=query, duration_ms=duration, metadata=recall_data)
