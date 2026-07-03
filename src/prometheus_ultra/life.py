@@ -513,6 +513,10 @@ class Omega:
 
         logger.info("Prometheus Ultra initialized: 127 mechanisms across 18 subsystems")
 
+        # 初始化自主神经系统
+        from prometheus_ultra.lifecycle.autonomic_regulator import AutonomicRegulator
+        self.autonomic_regulator = AutonomicRegulator(self)
+        self.autonomic_regulator.subscribe(self.event_bus)
     # ============================================================
     # remember pipeline (11 stages)
     # ============================================================
@@ -1275,7 +1279,7 @@ class Omega:
         diagnostics["eval_fitness_history"] = self.eval_engine.get_fitness_history()
         diagnostics["eval_convergence"] = self.eval_engine.get_convergence_curve()
 
-        self.event_bus.publish({"type": "evolve_completed", "fitness_before": fitness_before, "fitness_after": fitness_after, "result": "SUCCESS"})
+        self.event_bus.publish({"type": "evolve_completed", "fitness_before": fitness_before, "fitness_after": fitness_after, "result": "SUCCESS", "strategy": strategy})
         return EvolutionOutcome(
             result=EvolutionResult.SUCCESS,
             fitness_before=fitness_before, fitness_after=fitness_after,
@@ -2127,7 +2131,15 @@ class Omega:
         harness_stats = self.harness_x.get_stats()
         harness_score = min(0.15, harness_stats.get("evolutions", 0) * 0.05)
 
-        total = memory_score + diversity_score + evo_score + health_score + harness_score
+        # Dimension 6: Utility health (0-0.1)
+        util_stats = self.utility_tracker.get_stats()
+        util_score = min(0.1, util_stats.get("avg_utility", 0.5) * 0.1)
+
+        # Dimension 7: Thermodynamic energy (0-0.1)
+        ti_energy = self.thermodynamic.get_energy()
+        energy_score = min(0.1, ti_energy * 0.1)
+
+        total = memory_score + diversity_score + evo_score + health_score + harness_score + util_score + energy_score
         return min(1.0, max(0.0, total))
 
     def _compute_health(self) -> str:
