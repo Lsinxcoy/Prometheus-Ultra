@@ -73,6 +73,13 @@ class BranchMergeRequest(BaseModel):
     target: str = "main"
 
 
+class ReportUsageRequest(BaseModel):
+    node_id: str
+    was_useful: bool = True
+    query: str = ""
+    context: str = ""
+
+
 class PipelineResponse(BaseModel):
     success: bool
     pipeline: str
@@ -324,6 +331,28 @@ class UltraAPIServer:
                 raise HTTPException(status_code=503, detail="Omega not initialized")
             branches = self.omega.branch_list()
             return {"branches": branches}
+
+        @app.post("/api/v1/report_usage", response_model=PipelineResponse)
+        def report_usage(req: ReportUsageRequest):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                if req.was_useful:
+                    self.omega.utility_tracker.record_reference(req.node_id)
+                else:
+                    self.omega.utility_tracker.record_negative_reference(req.node_id)
+                return PipelineResponse(
+                    success=True, pipeline="report_usage",
+                    data={"node_id": req.node_id, "was_useful": req.was_useful},
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="report_usage",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
 
         @app.on_event("startup")
         def startup():

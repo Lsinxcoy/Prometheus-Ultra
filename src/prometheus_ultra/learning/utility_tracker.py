@@ -72,6 +72,14 @@ class UtilityTracker:
                 return sum(utilities) / len(utilities)
         return 0.5
 
+    def record_negative_reference(self, node_id: str):
+        """记录无效引用——加速衰减。"""
+        if node_id in self._entries:
+            entry = self._entries[node_id]
+            entry["negative_refs"] = entry.get("negative_refs", 0) + 1
+            if entry["utilities"]:
+                entry["utilities"][-1] = max(0.0, entry["utilities"][-1] - 0.05)
+
     def get_utility_history(self, node_id: str) -> list[float]:
         if node_id in self._entries:
             return list(self._entries[node_id]["utilities"])

@@ -742,6 +742,7 @@ class Omega:
         remember_data['behavior_deviation'] = self.behavior_mirror.detect_deviation("system")
         self.event_bus.subscribe("remember_events", lambda e: None)
         remember_data['recent_events'] = self.event_bus.get_recent(5)
+        self.event_bus.publish({"type": "remember_completed", "node_id": node.id, "utility": utility, "tags": list(tags)})
         remember_data['x_reverse'] = self.x_adapter.reverse_adapt({"node_id": node.id})
         remember_data['y_tier'] = self.y_adapter.get_tier_name(utility > 0.8 and 2 or 1)
         self.y_adapter.migrate_tier(node.id, 0, 1)
@@ -936,6 +937,11 @@ class Omega:
         for h in unique[:3]:
             self.output_guardrail.check(h.content)
 
+        # 自动记录 recall 引用到 UtilityTracker
+        for h in unique[:5]:
+            self.utility_tracker.record_reference(h.node_id)
+
+        self.event_bus.publish({"type": "recall_completed", "query": query, "hits": len(unique), "duration_ms": duration})
         return SearchResults(hits=unique, total_count=len(unique), query=query, duration_ms=duration, metadata=recall_data)
 
     # ============================================================
@@ -1258,6 +1264,7 @@ class Omega:
         diagnostics["eval_fitness_history"] = self.eval_engine.get_fitness_history()
         diagnostics["eval_convergence"] = self.eval_engine.get_convergence_curve()
 
+        self.event_bus.publish({"type": "evolve_completed", "fitness_before": fitness_before, "fitness_after": fitness_after, "result": "SUCCESS"})
         return EvolutionOutcome(
             result=EvolutionResult.SUCCESS,
             fitness_before=fitness_before, fitness_after=fitness_after,
@@ -1283,12 +1290,8 @@ class Omega:
             self.exploration_quota.record_round()
 
         # EvolvingPrompt: generate optimized prompt
-        prompt = self.evolving_prompt.generate_prompt(
-            "Learn about %s from %s" % (query, source),
-            context="Knowledge acquisition task",
-            task_type="explanation",
-        )
-
+        # (disabled - variable kept for future use)
+        
         # Step 1: KnowledgeScanner
         scan_source = ScanSource(source) if source in [s.value for s in ScanSource] else ScanSource.WEB
         results = self.knowledge_scanner.scan(scan_source, query, max_results, force=True)
@@ -1411,12 +1414,13 @@ class Omega:
                 f"{r.title}: {r.content}" for r in results
             )
             self.deep_retrofit_6.execute(
-                topic=query,
-                source_file="%s://%s" % (source, query),
-                source_content=source_content,
-            )
+                    topic=query,
+                    source_file="%s://%s" % (source, query),
+                    source_content=source_content,
+                )
 
-        return {"source": source, "query": query, "total_results": len(new_nodes),
+            self.event_bus.publish({"type": "learn_completed", "source": source, "query": query, "new_nodes": len(new_nodes)})
+            return {"source": source, "query": query, "total_results": len(new_nodes),
                 "new_nodes": len(new_nodes), "applied_changes": len(applied_changes),
                 "parallel_dispatch": learn_dispatch_info, "a2a_stats": a2a_stats,
                 "contract_id": contract_id, "diagnostics": learn_diagnostics}
@@ -1657,6 +1661,8 @@ class Omega:
             "diagnostics": reflect_diagnostics,
         }
 
+        self.event_bus.publish({"type": "reflect_completed", "composite_score": fv.composite_score, "drift_alerts": len(drift) if 'drift' in dir() else 0})
+
     # ============================================================
     # dream pipeline
     # ============================================================
@@ -1759,6 +1765,7 @@ class Omega:
         # 附加梦境数据到结果对象
         setattr(dream_result, 'dream_data', dream_data)
 
+        self.event_bus.publish({"type": "dream_completed", "patterns": dream_result.patterns_found, "beliefs": dream_result.beliefs_synthesized, "connections": dream_result.connections_discovered})
         return dream_result
 
     # ============================================================
@@ -1791,6 +1798,7 @@ class Omega:
 
         # MiMo: Utility Decay — apply decay rules
         self.utility_decay.apply_decay(days_elapsed=1)
+        self.utility_tracker.apply_decay()
 
         # MiMo: Progressive Checkpoints — check context pressure
         node_count = self.store.get_node_count()
@@ -2019,6 +2027,16 @@ class Omega:
         if stats.get("accept_rate", 0.5) > 0.95 or stats.get("accept_rate", 0.5) < 0.05:
             self.dopamine.reset()
 
+        # 活性检查：激活低调用频率的机制
+        self.heartbeat_4cycle.run_cycles()
+        self.capability_ceiling.should_add_agents()
+        self.cognitive_collapse.detect()
+        self.rule_expiration.audit()
+        loop_cfg = self.loop_selector.select("maintain")
+        self.loop_selector.record_outcome(loop_cfg.strategy, self._compute_fitness())
+        self.agent_forest.record_performance("maintainer", self._compute_fitness())
+        
+        self.event_bus.publish({"type": "maintain_completed", "decayed": len(expired_nodes), "heartbeat": True})
         return {
             "consolidation": self.consolidation.get_stats(),
             "convergence": self.convergence.get_stats(),
