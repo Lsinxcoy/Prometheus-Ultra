@@ -167,7 +167,6 @@ class AcademicSearcher:
             abstract = getattr(paper, "abstract", "") or ""
             doi = getattr(paper, "doi", "")
             url = getattr(paper, "url", "")
-            authors = getattr(paper, "authors", [])
 
         # 构建标签
         tags = [source_name, "academic"]
