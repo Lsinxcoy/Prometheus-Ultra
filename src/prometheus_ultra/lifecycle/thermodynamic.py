@@ -186,15 +186,19 @@ class ThermodynamicIntelligence:
         self._baseline_probs.append(baseline_prob)
 
     def _update_temperature(self, p0: float, p: float, valid: bool) -> None:
-        """Update temperature based on probability shift and validity."""
-        # Temperature reflects how far the system is from equilibrium
-        # High lift + valid outcome → temperature moves toward 0.5 (optimal)
-        # Low lift or invalid → temperature moves away from 0.5
+        """Update temperature based on probability shift and validity.
+        
+        Temperature reflects system deviation from passive equilibrium (0.5).
+        - Valid rare-valid outcomes → temperature moves AWAY from 0.5 (intelligent)
+        - Invalid or low-lift outcomes → temperature moves TOWARD 0.5 (random/failing)
+        """
         lift = (p - p0) / max(p0, 1e-10)
         if valid and lift > 0:
-            delta = 0.1 * (0.5 - self._temperature)
+            # Valid rare-valid: push temperature away from 0.5 toward 0.0
+            delta = -0.1 * lift * self._temperature
         else:
-            delta = -0.05 * (self._temperature - 0.5)
+            # Invalid/no lift: push temperature toward 0.5
+            delta = 0.05 * (0.5 - self._temperature)
         self._temperature = max(0.01, min(0.99, self._temperature + delta))
 
     def compute_intelligence(self, delta: float | None = None) -> float:
