@@ -36,6 +36,7 @@ class ScanSource(Enum):
     REPORT = "report"
     WIKI = "wiki"
     LOCAL = "local"
+    ACADEMIC = "academic"
 
 
 @dataclass
@@ -121,6 +122,7 @@ class KnowledgeScanner:
         self._scans: list[dict] = []
         self._total_results = 0
         self._source_stats: dict[str, int] = {}
+        self._academic_searcher = None
 
     def scan(self, source: ScanSource, query: str, max_results: int = 5,
              force: bool = False) -> list[ScanResult]:
@@ -144,6 +146,8 @@ class KnowledgeScanner:
             results = self._scan_arxiv(query, max_results)
         elif source == ScanSource.LOCAL:
             results = self._scan_local(query, max_results)
+        elif source == ScanSource.ACADEMIC:
+            results = self._scan_academic(query, max_results)
 
         self._scans.append({
             "source": source.value, "query": query,
@@ -352,6 +356,37 @@ class KnowledgeScanner:
     def get_stats(self) -> dict:
         return {"scans": len(self._scans), "total_results": self._total_results,
                 "source_distribution": dict(self._source_stats)}
+
+    def _scan_academic(self, query: str, max_results: int) -> list[ScanResult]:
+        """扫描学术论文源（通过 paper-search-mcp）。"""
+        try:
+            if self._academic_searcher is None:
+                from .academic_searcher import AcademicSearcher
+                self._academic_searcher = AcademicSearcher()
+
+            papers = self._academic_searcher.search(query, max_results=max_results)
+        except Exception as e:
+            logger.debug("Academic scan failed: %s", e)
+            return [ScanResult(
+                title=f"Academic: {query}",
+                content=f"Academic papers on {query} (offline fallback).",
+                source="academic", tags=query.lower().split()[:3], score=0.5,
+                url="https://scholar.google.com/", timestamp=time.time(), source_type="paper",
+            )]
+
+        results = []
+        for p in papers:
+            results.append(ScanResult(
+                title=(p.get("title") or "")[:200],
+                content=(p.get("content") or "")[:500],
+                source="academic",
+                tags=p.get("tags", [])[:5],
+                score=p.get("score", 0.7),
+                url=p.get("url", ""),
+                timestamp=time.time(),
+                source_type="paper",
+            ))
+        return results
 
 
 def _xml_tag(text: str, tag: str) -> str:
