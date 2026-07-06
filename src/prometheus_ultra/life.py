@@ -454,6 +454,7 @@ class Omega:
         self.explorer_state = ExplorerState()
         self.curiosity_autofill = CuriosityAutoFill(self.curiosity_queue)
         self.exploration_quota = ExplorationQuota(max_daily=20, revision_after=10)
+        self._scans: list[dict] = []
 
         # Sub-agent & rule management
         self.sub_agent_contract = SubAgentContract()
@@ -1428,12 +1429,12 @@ class Omega:
             logger.debug("Anti-pattern: shallow learn (all results have < 80 chars)")
 
         # Anti-pattern 3: 重复学习检测
-        recent_learns = self._scans[-5:] if len(self._scans) > 5 else self._scans
-        same_query_count = sum(1 for s in recent_learns if s.get("query") == query)
+        scan_history = self._scans[-5:] if len(self._scans) > 5 else self._scans
+        same_query_count = sum(1 for s in scan_history if s.get("query") == query)
         if same_query_count > 2:
             logger.debug("Anti-pattern: repeated learn (same query 3+ times in last 5)")
-            # 降低效用
-            utility *= 0.8
+            # 降低效用 (initially 0.7 from remember call)
+            utility_val = 0.56  # 0.7 * 0.8
 
         # Curiosity queue deep
         curiosity_item = self.curiosity_queue.pop()
@@ -1501,7 +1502,7 @@ class Omega:
 
             # Self-Observation: 记录 learn，在周循环时触发回顾
             try:
-                review = self.self_observation.record_learn(query, len(new_nodes), source, utility)
+                review = self.self_observation.record_learn(query, len(new_nodes), source, utility_val if same_query_count > 2 else 0.7)
                 if review and review.get("patterns"):
                     logger.info("SelfObservation: %d patterns, zero_gain=%d",
                                 len(review["patterns"]), review.get("zero_gain_streak", 0))
@@ -1754,6 +1755,9 @@ class Omega:
         self.session.access(f"reflect_{int(time.time())}")
         self.session.expire_idle()
 
+        # publish before return (fix: was dead code after return)
+        self.event_bus.publish({"type": "reflect_completed", "composite_score": fv.composite_score, "drift_alerts": len(drift)})
+
         return {
             "five_view": {"score": fv.composite_score, "grade": fv.grade},
             "harness": {"score": harness_score, "grade": "B" if harness_score > 0.7 else "C" if harness_score > 0.4 else "D"},
@@ -1773,8 +1777,6 @@ class Omega:
             "code_review": reflect_review,
             "diagnostics": reflect_diagnostics,
         }
-
-        self.event_bus.publish({"type": "reflect_completed", "composite_score": fv.composite_score, "drift_alerts": len(drift)})
 
     # ============================================================
     # dream pipeline

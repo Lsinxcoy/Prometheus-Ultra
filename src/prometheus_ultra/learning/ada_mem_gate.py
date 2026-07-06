@@ -14,8 +14,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 短查询跳过阈值：不超过这么多 token 的短查询跳过检索
-SHORT_QUERY_TOKEN_THRESHOLD = 5
+# 短查询跳过阈值：不超过此 token 数的短查询跳过检索
+SHORT_QUERY_TOKEN_THRESHOLD = 2
 
 
 class AdaMEMGate:
@@ -51,7 +51,7 @@ class AdaMEMGate:
                 self._skip_count += 1
                 return False
 
-            # 2. 极短查询（≤5个词）→ 跳过
+            # 2. 极短查询（≤2个词）→ 跳过（防止"AI"这类合法查询被跳过）
             token_count = len(query_lower.split())
             if token_count <= SHORT_QUERY_TOKEN_THRESHOLD:
                 self._skip_count += 1
