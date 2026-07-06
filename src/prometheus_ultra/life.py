@@ -233,8 +233,10 @@ class Omega:
         if db_path:
             self._cfg.database_path = db_path
         self._start_time = time.time()
+        self._last_reflect_score = 0.0
+        self._last_reflect_time = 0.0
 
-        # Learned config: persistent parameter adjustments from knowledge learning
+        # Learned config
         self._learned_config: dict[str, float] = {}
 
         # ===== Foundation (1) =====
@@ -517,6 +519,27 @@ class Omega:
         from prometheus_ultra.lifecycle.autonomic_regulator import AutonomicRegulator
         self.autonomic_regulator = AutonomicRegulator(self)
         self.autonomic_regulator.subscribe(self.event_bus)
+
+        # 知识翻译：监听 knowledge_added → 轻量 fitness 检查
+        self._last_kta_fitness = self._compute_fitness()
+        def _on_knowledge_added(event: dict):
+            try:
+                data = event.get("data", {})
+                if data.get("new_nodes", 0) < 2:
+                    return
+                current = self._compute_fitness()
+                diff = abs(current - self._last_kta_fitness)
+                if diff > 0.02:
+                    self.event_bus.publish({
+                        "type": "fitness_changed",
+                        "delta": diff,
+                        "new_nodes": data.get("new_nodes", 0),
+                    })
+                    self._last_kta_fitness = current
+            except Exception:
+                pass
+        self.event_bus.subscribe("knowledge_added", _on_knowledge_added, priority=0.5)
+        logger.info("KTA: knowledge_added subscription registered")
     # ============================================================
     # remember pipeline (11 stages)
     # ============================================================
@@ -1261,6 +1284,18 @@ class Omega:
         # Event bus
         diagnostics["event_bus_recent"] = self.event_bus.get_recent(3)
 
+        # === 知识翻译：Level A + Level B ===
+        try:
+            kta_result = self.knowledge_to_mechanism.analyze_and_apply(
+                context=context or "auto",
+                tags=[context.split()[0]] if context else [],
+                omega=self,
+            )
+            if kta_result.get("applied", 0) > 0:
+                logger.info("KTA translations applied: %s", kta_result["summary"])
+        except Exception as e:
+            logger.debug("KTA translation skipped: %s", e)
+
         # Trend prediction
         diagnostics["trend_prediction"] = self.trend.predict("fitness")
 
@@ -1495,6 +1530,24 @@ class Omega:
             drift_alerts=len(self.drift_detector.detect()),
             convergence=self.convergence.is_converged(),
         )
+
+        # Stale detection: skip heavy processing if score unchanged within 15min
+        STALE_THRESHOLD_SEC = 900  # 15 minutes
+        now = time.time()
+        score_delta = abs(fv.composite_score - self._last_reflect_score)
+        time_since_last = now - self._last_reflect_time
+        if score_delta < 0.0001 and time_since_last < STALE_THRESHOLD_SEC and self._last_reflect_time > 0:
+            logger.info("reflect skipped (stale: delta=%.6f, last=%.1fs ago)", score_delta, time_since_last)
+            self._last_reflect_time = now  # extend timeout so we don't spam
+            return {
+                "five_view": {"score": fv.composite_score, "grade": fv.grade},
+                "harness": {"score": 0, "grade": "N/A"},
+                "drift_alerts": 0,
+                "stale_skipped": True,
+                "reason": "Score unchanged since last reflect; skipping heavy cycle.",
+            }
+        self._last_reflect_score = fv.composite_score
+        self._last_reflect_time = now
         hv = self.harness_x.evaluate()
         # HarnessX: evaluate best config if available
         best_config = self.harness_x.get_best_config()
@@ -1610,7 +1663,7 @@ class Omega:
         reflect_diagnostics["feedback_type_stats"] = self.feedback.get_type_stats()
 
         # Failure log deep operations
-        self.failure_log.log("reflect", "observation", {"score": fv.composite_score})
+        logger.info("reflect: score=%.4f, grade=%s, drift=%d", fv.composite_score, fv.grade, len(drift))
         reflect_diagnostics["failure_rates"] = self.failure_log.get_action_failure_rates()
         reflect_diagnostics["failure_errors"] = self.failure_log.get_common_errors()
         reflect_diagnostics["failure_recent"] = self.failure_log.get_recent_failures()
@@ -2049,6 +2102,19 @@ class Omega:
         loop_cfg = self.loop_selector.select("maintain")
         self.loop_selector.record_outcome(loop_cfg.strategy, self._compute_fitness())
         self.agent_forest.record_performance("maintainer", self._compute_fitness())
+        
+        # === KTA: 定期扫描未翻译的高 utility 知识 ===
+        try:
+            hint = self.knowledge_to_mechanism.scan_for_opportunities(
+                store=self.store, utility_threshold=0.6,
+            )
+            if hint.get("untranslated_count", 0) >= 3:
+                logger.info(
+                    "KTA scan: %d untranslated nodes (utility ≥ 0.6)",
+                    hint["untranslated_count"],
+                )
+        except Exception as e:
+            logger.debug("KTA scan skipped: %s", e)
         
         self.event_bus.publish({"type": "maintain_completed", "decayed": len(expired_nodes), "heartbeat": True})
         return {

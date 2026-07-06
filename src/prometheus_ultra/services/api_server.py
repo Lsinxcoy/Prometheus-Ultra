@@ -229,16 +229,25 @@ class UltraAPIServer:
                     query=req.query,
                     max_results=req.max_results,
                 )
+                # Guard: coroutine leak from scanner (pre-existing bug)
+                if hasattr(result, '__await__'):
+                    return PipelineResponse(
+                        success=False, pipeline="learn",
+                        error=f"Scanner returned coroutine for source={req.source} (async leak)",
+                        duration_ms=(time.time() - t0) * 1000,
+                    )
                 # Omega.learn may return a dict or a list depending on state
                 if isinstance(result, dict):
                     data = result
                 elif isinstance(result, list):
                     data = {"items": result, "count": len(result)}
                 else:
-                    data = {"result": _safe_serialize(result)}
+                    data = {"result": str(result)}
+                # Skip _safe_serialize for learn — the nested diagnostics dict
+                # can contain mixed types that trigger 'list' object has no 'get'
                 return PipelineResponse(
                     success=True, pipeline="learn",
-                    data=_safe_serialize(data),
+                    data=data,
                     duration_ms=(time.time() - t0) * 1000,
                 )
             except Exception as e:
