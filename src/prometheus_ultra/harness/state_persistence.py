@@ -31,6 +31,7 @@ class StatePersistence:
             "feedback_count": sum(len(v) for v in omega.feedback._feedbacks.values()),
             "evolution_count": len(omega.evolution_engine._history),
             "dream_count": len(omega.dream._memories),
+            "thermodynamic_state": omega.thermodynamic.get_state(),
         }
         parent = os.path.dirname(self._path)
         if parent:
@@ -60,6 +61,9 @@ class StatePersistence:
             # Restore evolution engine history
             if "evolution_count" in state:
                 omega.evolution_engine._history_loaded = True
+            # Restore thermodynamic state
+            if "thermodynamic_state" in state:
+                omega.thermodynamic.set_state(state["thermodynamic_state"])
             # Restore four network counts (info only, networks rebuild on demand)
             # Restore feedback count (info only)
             # Restore dream count (info only)

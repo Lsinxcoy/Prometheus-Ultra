@@ -398,6 +398,30 @@ class ThermodynamicIntelligence:
         self._p0_distribution.clear()
         self._p_distribution.clear()
 
+    def get_state(self) -> dict:
+        """获取可持久化的状态快照（5 个标量，不包含 1000 条观测历史）。"""
+        return {
+            "_temperature": self._temperature,
+            "_rare_valid_hits": self._rare_valid_hits,
+            "_rare_valid_misses": self._rare_valid_misses,
+            "_total_observations": self._total_observations,
+            "_total_rare_observations": self._total_rare_observations,
+            "_actual_rare_valid": self._actual_rare_valid,
+            "_correct_identifications": self._correct_identifications,
+        }
+
+    def set_state(self, state: dict) -> None:
+        """从持久化快照恢复状态。"""
+        if not state:
+            return
+        self._temperature = state.get("_temperature", 0.5)
+        self._rare_valid_hits = state.get("_rare_valid_hits", 0)
+        self._rare_valid_misses = state.get("_rare_valid_misses", 0)
+        self._total_observations = state.get("_total_observations", 0)
+        self._total_rare_observations = state.get("_total_rare_observations", 0)
+        self._actual_rare_valid = state.get("_actual_rare_valid", 0)
+        self._correct_identifications = state.get("_correct_identifications", 0)
+
     def update(self, delta: float = 0.1) -> None:
         """Update temperature with a delta (backward-compatible method).
 

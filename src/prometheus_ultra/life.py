@@ -1630,8 +1630,15 @@ class Omega:
         reflect_diagnostics["thermo_intel_breakdown"] = self.thermodynamic.get_intelligence_breakdown()
         reflect_diagnostics["thermo_rare_valid"] = self.thermodynamic.get_rare_valid_fidelity()
         reflect_diagnostics["thermo_trajectory"] = self.thermodynamic.get_trajectory_summary()
-        self.thermodynamic.observe_baseline(0.5)
-        self.thermodynamic.observe_action("reflect")
+        # 喂入真实数据：outcome_valid=低漂移说明反思有效，rarity=复合分数反映反思价值
+        self.thermodynamic.observe_baseline(0.3)
+        self.thermodynamic.observe_action(
+            action="reflect",
+            outcome_valid=len(drift) < 3,
+            rarity=1.0 - (fv.composite_score or 0.5),
+            baseline_prob=0.3,
+            induced_prob=0.3 * (1 + (1.0 - (fv.composite_score or 0.5))),
+        )
         reflect_diagnostics["thermo_validity_rate"] = self.thermodynamic.get_validity_rate()
         reflect_diagnostics["thermo_rare_ratio"] = self.thermodynamic.get_rare_valid_ratio()
 
@@ -1854,6 +1861,17 @@ class Omega:
         stats = self.thermodynamic.get_stats()
         if stats.get("temperature", 0.5) > 0.9 or stats.get("temperature", 0.5) < 0.1:
             self.thermodynamic.reset()
+        # Feed real maintenance data: outcome_valid=system stable, rarity=convergence delta
+        try:
+            ec = self.thermodynamic.get_energy()
+            self.thermodynamic.observe_action(
+                action="maintain",
+                outcome_valid=stats.get("temperature", 0.5) < 0.8,
+                rarity=max(0.01, 1.0 - (ec or 0.5)),
+                baseline_prob=0.3,
+            )
+        except Exception:
+            pass
         self.circuit_breaker.record_success()
         self.self_healing.heal({"bank_count": self.bank.count()})
         self.mars.update_belief("dream_belief", 0.6)
