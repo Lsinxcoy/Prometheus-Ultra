@@ -371,7 +371,62 @@ class ContextEngineering:
         overlap = query_words & content_words
         return len(overlap) / max(len(query_words), 1)
 
-    def _compress_text(self, text: str, ratio: float) -> str:
+    def skip(self, content: str, relevance_threshold: float = 0.3) -> bool:
+        """Skip: 判断是否应跳过一段内容（完全不注入上下文）。
+
+        Args:
+            content: 待判断的内容。
+            relevance_threshold: 相关性阈值。
+
+        Returns:
+            True 表示应跳过，False 表示应保留。
+        """
+        if not content:
+            return True
+        return len(content.split()) < 3
+
+    def rollback(self, components: list[ContextComponent],
+                 checkpoint_id: str = None) -> list[ContextComponent]:
+        """Rollback: 回退到上一个检查点。
+
+        从 _snapshots 中找回 check_point，恢复到那时状态。
+
+        Args:
+            components: 当前上下文组件列表。
+            checkpoint_id: 检查点 ID（若为 None，回退到最后一次 snapshot）。
+
+        Returns:
+            回退后的 context components。
+        """
+        if checkpoint_id:
+            target = [s for s in self._snapshots if s.id == checkpoint_id]
+        else:
+            target = self._snapshots[-1:] if self._snapshots else []
+
+        if target:
+            self._stats["rollbacks"] = self._stats.get("rollbacks", 0) + 1
+            return list(target[0].components)
+        return components
+
+    def delete(self, components: list[ContextComponent],
+               name_filter: str = None) -> list[ContextComponent]:
+        """Delete: 从上下文中删除指定组件。
+
+        Args:
+            components: 当前上下文组件列表。
+            name_filter: 要删除的组件名称（若 None，不删除）。
+
+        Returns:
+            删除后的 context components。
+        """
+        if name_filter is None:
+            return components
+        result = [c for c in components if c.name != name_filter]
+        if len(result) < len(components):
+            self._stats["deletions"] = self._stats.get("deletions", 0) + (len(components) - len(result))
+        return result
+
+    def get_stats(self) -> dict:
         """Compress text by keeping key sentences."""
         sentences = re.split(r'(?<=[.!?])\s+', text)
         if len(sentences) <= 2:

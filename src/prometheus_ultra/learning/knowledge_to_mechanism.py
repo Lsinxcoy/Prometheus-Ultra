@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,48 @@ class KnowledgeToMechanism:
 
     def __init__(self):
         self._applied_hashes: set[int] = set()  # 内容哈希去重，防止重复应用
+        # 三级信任标注追踪
+        self._trust_refs: dict[str, dict] = {}  # node_id -> {ref_count, sources, applications, last_promote}
+
+    def get_trust_level(self, node_id: str) -> str:
+        """获取指定节点的信任等级。"""
+        info = self._trust_refs.get(node_id, {})
+        refs = info.get("ref_count", 0)  # 独立来源数
+        apps = info.get("applications", 0)  # 有效应用数
+        if apps >= 3:
+            return "core"
+        elif refs >= 2:
+            return "validated"
+        return "fact"
+
+    def record_trust_reference(self, node_id: str, source: str = "unknown") -> dict:
+        """记录一次来源引用，触发 trust 晋升。"""
+        if node_id not in self._trust_refs:
+            self._trust_refs[node_id] = {"ref_count": 0, "sources": set(), "applications": 0, "last_promote": time.time()}
+        ref = self._trust_refs[node_id]
+        if source not in ref["sources"]:
+            ref["sources"].add(source)
+            ref["ref_count"] = len(ref["sources"])
+        old = self._trust_level_for_count(ref["ref_count"], ref["applications"])
+        new = self.get_trust_level(node_id)
+        if new != old:
+            ref["last_promote"] = time.time()
+            logger.info("Trust promoted: %s → %s (%s)", node_id[:8], new, old)
+        return {"node_id": node_id, "level": new}
+
+    def record_trust_application(self, node_id: str) -> dict:
+        """记录一次有效应用，触发 trust 晋升。"""
+        if node_id not in self._trust_refs:
+            self._trust_refs[node_id] = {"ref_count": 0, "sources": set(), "applications": 0, "last_promote": time.time()}
+        self._trust_refs[node_id]["applications"] += 1
+        return self.record_trust_reference(node_id, "application")
+
+    def _trust_level_for_count(self, refs: int, apps: int) -> str:
+        if apps >= 3:
+            return "core"
+        elif refs >= 2:
+            return "validated"
+        return "fact"
 
     def analyze_knowledge(self, content: str, tags: list[str]) -> list[dict]:
         """分析知识内容，产出一组翻译映射。

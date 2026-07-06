@@ -541,11 +541,19 @@ class Omega:
                 pass
         self.event_bus.subscribe("knowledge_added", _on_knowledge_added, priority=0.5)
         logger.info("KTA: knowledge_added subscription registered")
+
+        # 初始化 AdaMEM 门控
+        from prometheus_ultra.learning.ada_mem_gate import AdaMEMGate
+        self.ada_mem = AdaMEMGate()
+
+        # 初始化自我观察层
+        from prometheus_ultra.learning.self_observation import SelfObservation
+        self.self_observation = SelfObservation()
     # ============================================================
     # remember pipeline (11 stages)
     # ============================================================
     def remember(self, content: str, utility: float = 0.5, tags: list[str] | None = None,
-                 branch: str = "main") -> str:
+                 branch: str = "main", trust_level: str = "fact") -> str:
         tags = tags or []
         surprise = max(0.3, utility * 0.6)
         
@@ -792,6 +800,13 @@ class Omega:
         start = time.time()
         all_hits: list[SearchHit] = []
         recall_data = {}
+
+        # AdaMEM 门控：选择性跳过检索
+        try:
+            if not self.ada_mem.should_retrieve(query, task_type="reasoning"):
+                return SearchResults(hits=[], total_count=0, query=query, duration_ms=0, metadata=recall_data)
+        except Exception:
+            pass
 
         # Route 1: FTS
         fts_nodes = self.store.search(query, limit=limit * 2, branch=branch)
@@ -1408,6 +1423,18 @@ class Omega:
             except Exception:
                 contract_id = "contract_creation_failed"
 
+        # Anti-pattern 2: 只列不深 → short titles with no content = shallow scan
+        if all(len(r.content or '') < 80 for r in results[:max_results]):
+            logger.debug("Anti-pattern: shallow learn (all results have < 80 chars)")
+
+        # Anti-pattern 3: 重复学习检测
+        recent_learns = self._scans[-5:] if len(self._scans) > 5 else self._scans
+        same_query_count = sum(1 for s in recent_learns if s.get("query") == query)
+        if same_query_count > 2:
+            logger.debug("Anti-pattern: repeated learn (same query 3+ times in last 5)")
+            # 降低效用
+            utility *= 0.8
+
         # Curiosity queue deep
         curiosity_item = self.curiosity_queue.pop()
 
@@ -1471,6 +1498,16 @@ class Omega:
                 )
 
             self.event_bus.publish({"type": "learn_completed", "source": source, "query": query, "new_nodes": len(new_nodes)})
+
+            # Self-Observation: 记录 learn，在周循环时触发回顾
+            try:
+                review = self.self_observation.record_learn(query, len(new_nodes), source, utility)
+                if review and review.get("patterns"):
+                    logger.info("SelfObservation: %d patterns, zero_gain=%d",
+                                len(review["patterns"]), review.get("zero_gain_streak", 0))
+            except Exception:
+                pass
+
             return {"source": source, "query": query, "total_results": len(new_nodes),
                 "new_nodes": len(new_nodes), "applied_changes": len(applied_changes),
                 "parallel_dispatch": learn_dispatch_info, "a2a_stats": a2a_stats,
@@ -2135,6 +2172,19 @@ class Omega:
         except Exception as e:
             logger.debug("KTA scan skipped: %s", e)
         
+        # === 反退化检查 ===
+        try:
+            all_avgs = self.utility_tracker.get_all_averages()
+            if all_avgs:
+                vals = list(all_avgs.values())
+                maintain_data['aging_compression_var'] = sum((v - sum(vals)/len(vals))**2 for v in vals) / len(vals)
+        except Exception:
+            pass
+        try:
+            maintain_data['tracelift_inert'] = sum(1 for k in self._learned_config if not k.startswith('_'))
+        except Exception:
+            pass
+
         self.event_bus.publish({"type": "maintain_completed", "decayed": len(expired_nodes), "heartbeat": True})
         return {
             "consolidation": self.consolidation.get_stats(),

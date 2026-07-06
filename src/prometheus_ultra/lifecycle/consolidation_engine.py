@@ -72,26 +72,24 @@ class ConsolidationEngine:
         result.groups = [{"members": len(g), "avg_utility": sum(n["utility"] for n in g) / len(g)} for g in groups]
         
         # 阶段2: 合并相似节点（保留最高utility版本）
-        merged = 0
-        kept: list[dict] = []
+        # R2903实证: consolidation让54%已会题目做错
+        # vmPFC研究: 大脑默认分离不整合
+        # 改为: 建立 similar_to 关联边，不删除任何节点
+        linked = 0
+        kept = list(self._pending)
         for group in groups:
-            if len(group) == 1:
-                kept.append(group[0])
-            else:
-                # 按utility排序，保留最好的
-                group.sort(key=lambda n: n["utility"], reverse=True)
-                kept.append(group[0])
-                merged += len(group) - 1
-                # 提升保留节点的utility
-                group[0]["utility"] = min(1.0, group[0]["utility"] * (1 + 0.1 * len(group)))
-        result.merged = merged
+            if len(group) > 1:
+                # 建立关联边，不合并
+                for i in range(1, len(group)):
+                    self._notify_link(group[0]["id"], group[i]["id"])
+                linked += len(group) - 1
+        result.merged = linked
         
-        # 阶段3: 清理低utility节点
-        before_count = len(kept)
-        kept = [n for n in kept if n["utility"] >= self.min_utility]
-        result.pruned = before_count - len(kept)
+        # 阶段3: 标记低utility节点（候选清理，不实际删除）
+        low_utility_nodes = [n for n in kept if n["utility"] < self.min_utility]
+        result.pruned = len(low_utility_nodes)
         
-        # 阶段4: 提升保留节点
+        # 阶段4: 保留所有节点（append-only）
         result.promoted = len(kept)
         
         # 更新待整合列表
@@ -136,7 +134,11 @@ class ConsolidationEngine:
             groups.append(group)
         
         return groups
-    
+
+    def _notify_link(self, source_id: str, target_id: str) -> None:
+        """记录相似节点关联（替代合并，append-only）。"""
+        logger.debug("Consolidation link: %s → %s", source_id[:8], target_id[:8])
+
     def get_stats(self) -> dict:
         """获取整合统计."""
         total_merged = sum(r.merged for r in self._history)
