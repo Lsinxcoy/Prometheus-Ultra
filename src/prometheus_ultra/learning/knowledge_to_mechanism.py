@@ -36,7 +36,7 @@ class KnowledgeToMechanism:
 
         Args:
             content: 知识文本内容。
-            tags: 知识标签。
+            tags: 知识标签列表（可空）。
 
         Returns:
             翻译映射列表，每个元素含 level/type/target/value/confidence。
@@ -44,6 +44,7 @@ class KnowledgeToMechanism:
         mappings: list[dict] = []
         if not content:
             return mappings
+        tags = tags or []
 
         content_lower = content.lower()
 

@@ -521,6 +521,7 @@ class Omega:
         self.autonomic_regulator.subscribe(self.event_bus)
 
         # 知识翻译：监听 knowledge_added → 轻量 fitness 检查
+        # _last_kta_fitness: 上次知识翻译时记录的 fitness 值，用于 delta 比较
         self._last_kta_fitness = self._compute_fitness()
         def _on_knowledge_added(event: dict):
             try:
