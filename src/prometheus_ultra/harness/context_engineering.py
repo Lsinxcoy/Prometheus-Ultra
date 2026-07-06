@@ -399,13 +399,14 @@ class ContextEngineering:
             回退后的 context components。
         """
         if checkpoint_id:
-            target = [s for s in self._snapshots if s.id == checkpoint_id]
+            target = [s for s in self._snapshots if hasattr(s, 'id') and s.id == checkpoint_id]
         else:
             target = self._snapshots[-1:] if self._snapshots else []
 
         if target:
             self._stats["rollbacks"] = self._stats.get("rollbacks", 0) + 1
             return list(target[0].components)
+        logger.debug("ContextEngine rollback: checkpoint not found (id=%s)", checkpoint_id)
         return components
 
     def delete(self, components: list[ContextComponent],

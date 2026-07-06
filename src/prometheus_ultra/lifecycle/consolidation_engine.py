@@ -48,6 +48,7 @@ class ConsolidationEngine:
         self.min_utility = min_utility
         self._history: list[ConsolidationResult] = []
         self._pending: list[dict] = []
+        self._max_pending_age = 86400 * 30  # 30天TTL: 超过此时间的待整合节点自动清除
     
     def add_pending(self, node: dict) -> None:
         """添加待整合节点."""
@@ -62,6 +63,16 @@ class ConsolidationEngine:
         """执行完整整合流程."""
         start = time.time()
         result = ConsolidationResult()
+        
+        if not self._pending:
+            self._history.append(result)
+            return result
+        
+        # TTL清理: 移除超过30天的待整合节点，防止内存泄漏
+        now = time.time()
+        old_count = len(self._pending)
+        self._pending = [n for n in self._pending if now - n.get("added_at", 0) < self._max_pending_age]
+        result.pruned = old_count - len(self._pending)
         
         if not self._pending:
             self._history.append(result)
@@ -150,4 +161,5 @@ class ConsolidationEngine:
             "total_pruned": total_pruned,
             "total_promoted": total_promoted,
             "pending": len(self._pending),
+            "pending_ttl_days": 30,
         }

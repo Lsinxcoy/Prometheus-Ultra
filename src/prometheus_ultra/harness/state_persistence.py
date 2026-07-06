@@ -32,6 +32,7 @@ class StatePersistence:
             "evolution_count": len(omega.evolution_engine._history),
             "dream_count": len(omega.dream._memories),
             "thermodynamic_state": omega.thermodynamic.get_state(),
+            "trust_levels": omega.knowledge_to_mechanism.get_trust_state(),
         }
         parent = os.path.dirname(self._path)
         if parent:
@@ -64,6 +65,9 @@ class StatePersistence:
             # Restore thermodynamic state
             if "thermodynamic_state" in state:
                 omega.thermodynamic.set_state(state["thermodynamic_state"])
+            # Restore trust levels
+            if "trust_levels" in state:
+                omega.knowledge_to_mechanism.set_trust_state(state["trust_levels"])
             # Restore four network counts (info only, networks rebuild on demand)
             # Restore feedback count (info only)
             # Restore dream count (info only)

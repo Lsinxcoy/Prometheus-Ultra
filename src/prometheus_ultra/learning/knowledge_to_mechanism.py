@@ -77,6 +77,29 @@ class KnowledgeToMechanism:
             return "validated"
         return "fact"
 
+    def get_trust_state(self) -> dict:
+        """获取可信状态快照用于持久化。"""
+        serializable = {}
+        for nid, info in self._trust_refs.items():
+            serializable[nid] = {
+                "ref_count": info["ref_count"],
+                "applications": info["applications"],
+                "last_promote": info["last_promote"],
+            }
+        return serializable
+
+    def set_trust_state(self, state: dict) -> None:
+        """从持久化快照恢复可信状态。"""
+        if not state:
+            return
+        for nid, info in state.items():
+            self._trust_refs[nid] = {
+                "ref_count": info.get("ref_count", 0),
+                "sources": set(),
+                "applications": info.get("applications", 0),
+                "last_promote": info.get("last_promote", 0),
+            }
+
     def analyze_knowledge(self, content: str, tags: list[str]) -> list[dict]:
         """分析知识内容，产出一组翻译映射。
 

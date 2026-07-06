@@ -31,6 +31,7 @@ class SelfObservation:
     """
 
     def __init__(self):
+        self._lock = __import__('threading').Lock()
         self._learn_log: deque[dict] = deque(maxlen=50)
         self._learn_zero_gain_count = 0
         self._learn_rounds_since_review = 0
@@ -44,28 +45,29 @@ class SelfObservation:
             None 表示未触发回顾。
             dict 表示触发回顾的检查报告。
         """
-        self._learn_log.append({
-            "query": query,
-            "new_nodes": new_nodes,
-            "source": source,
-            "utility": utility,
-            "timestamp": time.time(),
-        })
-        self._learn_rounds_since_review += 1
+        with self._lock:
+            self._learn_log.append({
+                "query": query,
+                "new_nodes": new_nodes,
+                "source": source,
+                "utility": utility,
+                "timestamp": time.time(),
+            })
+            self._learn_rounds_since_review += 1
 
-        # 连续零增益检测
-        if new_nodes == 0:
-            self._learn_zero_gain_count += 1
-        else:
-            self._learn_zero_gain_count = 0
+            # 连续零增益检测
+            if new_nodes == 0:
+                self._learn_zero_gain_count += 1
+            else:
+                self._learn_zero_gain_count = 0
 
-        # 周循环检查
-        if self._learn_rounds_since_review >= REVIEW_INTERVAL:
-            return self._run_review()
+            # 周循环检查
+            if self._learn_rounds_since_review >= REVIEW_INTERVAL:
+                return self._run_review_locked()
         return None
 
-    def _run_review(self) -> dict:
-        """执行周循环回顾。不探索新东西，只回看过去 N 次 learn。"""
+    def _run_review_locked(self) -> dict:
+        """执行周循环回顾（已持有锁时调用）。"""
         self._review_count += 1
         self._learn_rounds_since_review = 0
         self._last_review_time = time.time()

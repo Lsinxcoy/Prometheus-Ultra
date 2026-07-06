@@ -42,35 +42,39 @@ class AdaMEMGate:
         Returns:
             True 表示应该检索，False 表示跳过。
         """
-        self._total_count += 1
-        query_lower = query.strip().lower()
+        try:
+            self._total_count += 1
+            query_lower = query.strip().lower()
 
-        # 1. 空查询 → 跳过
-        if not query_lower:
-            self._skip_count += 1
-            return False
+            # 1. 空查询 → 跳过
+            if not query_lower:
+                self._skip_count += 1
+                return False
 
-        # 2. 极短查询（≤5个词）→ 跳过——通常是确认性/社交性问题
-        token_count = len(query_lower.split())
-        if token_count <= SHORT_QUERY_TOKEN_THRESHOLD:
-            self._skip_count += 1
-            return False
+            # 2. 极短查询（≤5个词）→ 跳过
+            token_count = len(query_lower.split())
+            if token_count <= SHORT_QUERY_TOKEN_THRESHOLD:
+                self._skip_count += 1
+                return False
 
-        # 3. 同一查询 60 秒内重复 → 跳过
-        import time
-        now = time.time()
-        last_seen = self._recent_queries.get(query_lower, 0)
-        if now - last_seen < 60.0:
-            self._skip_count += 1
-            return False
-        self._recent_queries[query_lower] = now
+            # 3. 同一查询 60 秒内重复 → 跳过
+            import time
+            now = time.time()
+            last_seen = self._recent_queries.get(query_lower, 0)
+            if now - last_seen < 60.0:
+                self._skip_count += 1
+                return False
+            self._recent_queries[query_lower] = now
 
-        # 4. 创作型任务 → 低检索频率（避免约束创造力）
-        if task_type == "creative":
-            self._skip_count += 1
-            return False
+            # 4. 创作型任务 → 低检索频率
+            if task_type == "creative":
+                self._skip_count += 1
+                return False
 
-        return True
+            return True
+        except Exception:
+            # fail-safe: 异常时默认检索（不放走查询比跳过安全）
+            return True
 
     def get_skip_rate(self) -> float:
         """获取跳过率。"""
