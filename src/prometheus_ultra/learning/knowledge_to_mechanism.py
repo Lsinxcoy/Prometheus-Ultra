@@ -31,6 +31,9 @@ class KnowledgeToMechanism:
                 applied_changes.append(mapping)
     """
 
+    def __init__(self):
+        self._applied_hashes: set[int] = set()  # 内容哈希去重，防止重复应用
+
     def analyze_knowledge(self, content: str, tags: list[str]) -> list[dict]:
         """分析知识内容，产出一组翻译映射。
 
@@ -46,7 +49,10 @@ class KnowledgeToMechanism:
             return mappings
         tags = tags or []
 
-        content_lower = content.lower()
+        # 文本归一化：去冗余空格、统一分隔符
+        import re as _re
+        content_lower = _re.sub(r'[_\-]+', ' ', content.lower())
+        content_lower = _re.sub(r'\s+', ' ', content_lower).strip()
 
         # Level A: 参数级翻译
         param_changes = self._extract_parameters(content_lower, tags)
@@ -139,6 +145,12 @@ class KnowledgeToMechanism:
         if not context:
             return {"applied": 0, "summary": "no_context", "changes": {}}
 
+        # 去重：相同内容只翻译一次
+        content_hash = hash(context)
+        if content_hash in self._applied_hashes:
+            return {"applied": 0, "summary": "duplicate", "changes": {}}
+        self._applied_hashes.add(content_hash)
+
         applied = []
         changes = {}
 
@@ -166,7 +178,7 @@ class KnowledgeToMechanism:
 
         Args:
             store: MinervaStore 实例。
-            utility_threshold: 最小 utility 值。
+            utility_threshold: 最小 utility 值（可通过 _learned_config 外部调整）。
 
         Returns:
             {untranslated_count: int, sample: list}
