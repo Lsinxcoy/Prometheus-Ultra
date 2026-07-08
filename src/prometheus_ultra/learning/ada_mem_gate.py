@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 短查询跳过阈值：不超过此 token 数的短查询跳过检索
-SHORT_QUERY_TOKEN_THRESHOLD = 2
+SHORT_QUERY_TOKEN_THRESHOLD = 1
 
 
 class AdaMEMGate:

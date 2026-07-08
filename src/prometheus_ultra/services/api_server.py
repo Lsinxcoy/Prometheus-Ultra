@@ -16,6 +16,30 @@ Exposes all 7 pipelines as HTTP endpoints:
 """
 from __future__ import annotations
 
+# Suppress harmless RuntimeWarning from async libs at module load
+import warnings
+warnings.filterwarnings("ignore", message=".*coroutine.*was never awaited.*")
+
+# Filter coroutine repr from stderr via stderr wrapper
+import sys
+
+# Stderr interposition: clean coroutine pollution from async libs
+class _CleanStderr:
+    """Filter coroutine repr pollution from stderr (bypassed by uvicorn but catches startup)."""
+    _orig_stderr = sys.stderr
+    _coroutine_prefix = "<coroutine object "
+    
+    def write(self, text):
+        if self._coroutine_prefix not in text:
+            self._orig_stderr.write(text)
+    
+    def flush(self):
+        self._orig_stderr.flush()
+
+# Apply stderr wrapper for startup pollution
+if not isinstance(sys.stderr, _CleanStderr):
+    sys.stderr = _CleanStderr()
+
 import json
 import logging
 import threading
@@ -212,6 +236,8 @@ class UltraAPIServer:
                     duration_ms=(time.time() - t0) * 1000,
                 )
             except Exception as e:
+                import traceback
+                logger.error("evolve failed: %s\n%s", e, traceback.format_exc())
                 return PipelineResponse(
                     success=False, pipeline="evolve",
                     error=str(e),

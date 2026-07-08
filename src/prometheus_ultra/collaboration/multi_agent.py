@@ -240,6 +240,89 @@ class MultiAgentSystem:
         
         return result
     
+    def _deliberate_assembly(self, task_description: str,
+                             available_agents: list[dict],
+                             required_caps: list[str],
+                             min_panel_size: int = 3) -> list[str]:
+        """CAMP: 案例自适应动态专家组装 (arXiv 2604.00085).
+
+        按案例需求动态组装专家团，不做静态角色划分。
+
+        Args:
+            task_description: 任务描述
+            available_agents: 可用代理列表
+            required_caps: 所需能力列表
+            min_panel_size: 最小专家团大小
+
+        Returns:
+            选中的agent_id列表
+        """
+        if not available_agents:
+            return []
+
+        scored = []
+        for agent in available_agents:
+            caps = agent.get("capabilities", set())
+            if isinstance(caps, list):
+                caps = set(caps)
+
+            # 能力匹��分数
+            cap_score = sum(1 for rc in required_caps if rc in caps) / max(len(required_caps), 1)
+            # 声誉分数
+            rep_score = agent.get("reputation", 0.5)
+            # 负载分数
+            load = agent.get("current_load", 0)
+            capacity = agent.get("capacity", 10)
+            load_score = 1.0 - (load / max(capacity, 1))
+
+            total = cap_score * 0.5 + rep_score * 0.3 + load_score * 0.2
+            scored.append((total, agent["id"]))
+
+        scored.sort(key=lambda x: -x[0])
+        selected = [sid for _, sid in scored[:max(min_panel_size, len(required_caps))]]
+        return selected
+
+    def _three_value_vote(self, options: list[str],
+                           agents: list[dict]) -> dict:
+        """CAMP: 三值投票（支持/反对/弃权），弃权比强制投票更有信息量。
+
+        Args:
+            options: 选项列表
+            agents: 代理列表（含id, reputation）
+
+        Returns:
+            投票结果 dict
+        """
+        scores = {opt: {"for": 0.0, "against": 0.0, "abstain": 0.0}
+                  for opt in options}
+
+        for agent in agents:
+            aid = agent["id"]
+            rep = agent.get("reputation", 0.5)
+            for opt in options:
+                # 有rep一定概率弃权（低rep更可能弃权）
+                abstain_prob = 1.0 - rep
+                if random.random() < abstain_prob:
+                    scores[opt]["abstain"] += rep
+                elif random.random() < 0.7:  # 70%支持（匹配的）
+                    scores[opt]["for"] += rep
+                else:
+                    scores[opt]["against"] += rep
+
+        # 计算净得分
+        net_scores = {}
+        for opt, s in scores.items():
+            net_scores[opt] = round(s["for"] - s["against"], 4)
+
+        winner = max(net_scores, key=net_scores.get) if net_scores else None
+
+        return {
+            "winner": winner,
+            "scores": scores,
+            "net_scores": net_scores,
+            "total_participants": len(agents),
+        }
+
     def reach_consensus(self, options: list[dict], agent_ids: list[str] | None = None) -> dict:
         """达成共识 (兼容别名)."""
         if not options:

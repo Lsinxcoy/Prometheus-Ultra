@@ -36,6 +36,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
+from prometheus_ultra.memory.hebbian import HebbianMemory
+
 logger = logging.getLogger(__name__)
 
 
@@ -119,12 +121,14 @@ class GraphMemory:
         3. Score combining: match_score × importance + bfs_boost × edge_weight
     """
 
-    def __init__(self, max_bfs_depth: int = 3, max_results_per_query: int = 100):
+    def __init__(self, max_bfs_depth: int = 3, max_results_per_query: int = 100,
+                 hebbian: HebbianMemory | None = None):
         """Initialize graph memory.
 
         Args:
             max_bfs_depth: Maximum BFS traversal depth.
             max_results_per_query: Maximum results per search query.
+            hebbian: Optional HebbianMemory instance for edge-weight learning.
         """
         self._episodes: dict[str, EpisodeEvent] = {}
         self._adjacency: dict[str, list[Edge]] = {}
@@ -132,6 +136,7 @@ class GraphMemory:
         self._max_bfs_depth = max_bfs_depth
         self._max_results = max_results_per_query
         self._edge_count = 0
+        self._hebbian = hebbian
 
     def add_episode(self, episode: EpisodeEvent) -> None:
         """Add an episode to the graph.
@@ -187,6 +192,11 @@ class GraphMemory:
         self._adjacency[target].append(Edge(source=target, target=source, relation=relation, weight=weight))
 
         self._edge_count += 1
+
+        # Hebbian update: edges that fire together wire together
+        if self._hebbian is not None:
+            self._hebbian.update_edge(source, target, delta_weight=0.05, relation=relation)
+
         return True
 
     def search(self, query: str, limit: int = 10) -> list[SearchResult]:
@@ -246,7 +256,19 @@ class GraphMemory:
                 results[eid].score = max(results[eid].score, score)
 
         sorted_results = sorted(results.values(), key=lambda r: r.score, reverse=True)
-        return sorted_results[:limit]
+        final = sorted_results[:limit]
+
+        # Hebbian learning: strengthen edges between co-retrieved nodes
+        if self._hebbian is not None and len(final) >= 2:
+            retrieved_ids = [r.episode_id for r in final]
+            for i in range(len(retrieved_ids)):
+                for j in range(i + 1, min(i + 5, len(retrieved_ids))):
+                    self._hebbian.update_edge(
+                        retrieved_ids[i], retrieved_ids[j],
+                        delta_weight=0.02, relation="co_retrieved",
+                    )
+
+        return final
 
     def _compute_direct_score(self, query_lower: str, query_words: set[str],
                                episode: EpisodeEvent) -> float:

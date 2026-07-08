@@ -3,3 +3,4 @@ from prometheus_ultra.evaluation.marginal import MarginalAdvantageAccumulator
 from prometheus_ultra.evaluation.seagym import SEAGym
 from prometheus_ultra.evaluation.harness import HarnessX
 from prometheus_ultra.evaluation.bootstrap import BootstrapCI
+from prometheus_ultra.evaluation.lucky_pass import LuckyPassDetector, LuckyPassAnalysis

@@ -90,8 +90,10 @@ class SkillClaw:
         cache_key = f"{query_lower}:{limit}"
         if cache_key in self._search_cache:
             cached = self._search_cache[cache_key]
-            if time.time() - cached.get("_cache_ts", 0) < 60:
-                return [s for s in cached if "_cache_ts" not in s]
+            # cached is a list; _cache_ts is appended as last element
+            cache_ts = cached[-1].get("_cache_ts", 0) if cached and isinstance(cached[-1], dict) else 0
+            if time.time() - cache_ts < 60:
+                return [s for s in cached if isinstance(s, dict) and "_cache_ts" not in s]
         
         scored = []
         

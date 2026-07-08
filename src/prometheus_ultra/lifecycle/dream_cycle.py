@@ -74,10 +74,19 @@ class DreamCycle:
         })
         self._beliefs.extend(beliefs)
 
+        # Generate textual insights from patterns and beliefs
+        insights = []
+        for p in patterns[:5]:
+            w1, w2 = p["pair"]
+            insights.append(f"Pattern: '{w1}' strongly co-occurs with '{w2}' (PMI={p['pmi']:.2f})")
+        for b in beliefs[:3]:
+            insights.append(f"Belief: topic '{b['topic']}' has confidence {b['confidence']:.2f} ({b['evidence']} evidences)")
+
         return DreamResult(
             patterns_found=len(patterns),
             beliefs_synthesized=len(beliefs),
             connections_discovered=len(connections),
+            insights=insights,
         )
 
     def dream(self, memories: list | None = None) -> dict:

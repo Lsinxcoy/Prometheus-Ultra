@@ -65,12 +65,26 @@ class AutonomicRegulator:
             reward = max(-1.0, min(1.0, delta * 10))
             self._omega.ucb1.update(strategy, max(0.0, reward + 1.0))
 
-            # 如果策略真让系统变差 — 记录失败
+            # 如果策略真让系统变差 — 记录 fitness 到反进化门供回归检测
             if delta < -0.05:
                 try:
-                    self._omega.anti_evolution.record_failure(f"{strategy}:delta={delta:.3f}")
-                except Exception:
-                    pass
+                    self._omega.anti_evolution.record_score(after)
+                except Exception as e:
+                    logger.warning("AR: record_score failed: %s", e)
+
+            # 反馈回路：evolve 有效性回传
+            try:
+                ctx = self._omega.signal_fusion.get_chain_context()
+                if ctx and ctx.get("trigger_pipe") == "reflect":
+                    # evolve 是由低分 reflect 触发的 — 此 evolve 有效与否是对 reflect 回诊
+                    outcome = {"from": "evolve", "to": "reflect",
+                               "type": "evolve_efficacy", "data": {
+                                   "delta": round(delta, 4),
+                                   "effective": delta > 0,
+                               }}
+                    self._omega.signal_fusion.push_feedback(outcome)
+            except Exception:
+                pass
 
             # 2. 连续 fitness 下降 → 触发降级
             recent = [f for f, _, _ in self._fitness_log[-5:]]

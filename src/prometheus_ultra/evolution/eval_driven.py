@@ -1,10 +1,11 @@
 """EvalDrivenEngine — Population-based evaluation-driven evolution.
 
-Based on M* (arXiv:2604.11811) evolutionary approach:
+Based on M* (arXiv:2604.11811) + FATE failure-trajectory learning (arXiv:2605.11882):
 - Maintains a population of candidate solutions
 - Evaluates fitness via tournament selection
 - Applies crossover and Gaussian mutation
 - Tracks convergence via best/avg fitness over generations
+- FATE integration: learns from failure trajectories (low-fitness generations)
 """
 from __future__ import annotations
 import logging
@@ -38,7 +39,7 @@ class EvolutionEvalResult:
 class EvalDrivenEngine:
     """Population-based evaluation-driven evolution engine.
 
-    Based on M* evolutionary code optimization.
+    Based on M* evolutionary code optimization + FATE failure trajectory learning.
 
     Usage:
         engine = EvalDrivenEngine(max_iterations=10, convergence_threshold=0.95)
@@ -61,6 +62,9 @@ class EvalDrivenEngine:
         self._fitness_history: list[float] = []
         self._population: list[list[float]] = []
         self._generation = 0
+        # FATE: failure trajectory tracking
+        self._failure_trajectories: list[dict] = []
+        self._consecutive_failures = 0
 
     def _init_population(self, seed_fitness: float = 0.5):
         self._population = [
@@ -116,6 +120,7 @@ class EvalDrivenEngine:
                 )
                 self._history.append(result)
                 self._best_ever = max(self._best_ever, best_fit)
+                self._consecutive_failures = 0
                 return result
 
             indexed = list(enumerate(fitnesses))
@@ -130,6 +135,24 @@ class EvalDrivenEngine:
                 new_pop.append(child)
 
             self._population = new_pop
+
+            # FATE: track low-fitness iterations as failure trajectories
+            if best_fit < 0.3:
+                self._consecutive_failures += 1
+                self._failure_trajectories.append({
+                    "iteration": i,
+                    "best_fitness": best_fit,
+                    "avg_fitness": avg_fit,
+                    "population_diversity": self._diversity(fitnesses),
+                    "ts": time.time(),
+                })
+                # FATE recovery: boost mutation rate when stuck
+                if self._consecutive_failures >= 3:
+                    self._mutation_rate = min(0.5, self._mutation_rate * 1.5)
+                    logger.debug("FATE recovery: boosted mutation rate to %.3f", self._mutation_rate)
+            else:
+                self._consecutive_failures = 0
+                self._mutation_rate = max(0.1, self._mutation_rate * 0.95)
 
         final_fitnesses = [self._evaluate_fitness(g) for g in self._population]
         best = max(final_fitnesses)
@@ -153,10 +176,22 @@ class EvalDrivenEngine:
         return (sum((f - mean) ** 2 for f in fitnesses) / len(fitnesses)) ** 0.5
 
     def evaluate(self, data: dict | None = None) -> dict:
-        return {"evaluated": True, "history_len": len(self._history), "best_ever": self._best_ever}
+        return {"evaluated": True, "history_len": len(self._history), "best_ever": self._best_ever,
+                "failure_count": len(self._failure_trajectories)}
 
     def get_fitness_history(self) -> list[float]:
         return list(self._fitness_history)
+
+    def get_failure_trajectories(self) -> list[dict]:
+        """FATE: return tracked failure trajectories for analysis."""
+        return list(self._failure_trajectories)
+
+    def get_learning_rate(self) -> float:
+        """FATE: estimate learning rate from fitness history slope."""
+        if len(self._fitness_history) < 3:
+            return 0.0
+        recent = self._fitness_history[-3:]
+        return max(0.0, min(1.0, (recent[-1] - recent[0]) / len(recent)))
 
     def get_convergence_curve(self) -> list[dict]:
         return [{"iteration": h.iteration, "fitness": h.fitness, "avg": h.avg_fitness} for h in self._history]
@@ -168,4 +203,6 @@ class EvalDrivenEngine:
             "generations": self._generation,
             "population_size": self._pop_size,
             "avg_fitness": sum(self._fitness_history) / max(len(self._fitness_history), 1),
+            "failure_trajectories": len(self._failure_trajectories),
+            "learning_rate": self.get_learning_rate(),
         }

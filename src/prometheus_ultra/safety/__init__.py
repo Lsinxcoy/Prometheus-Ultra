@@ -8,3 +8,4 @@ from prometheus_ultra.safety.drift_detector import DriftDetector
 from prometheus_ultra.safety.zscore import ZScoreDetector
 from prometheus_ultra.safety.trend import TrendDetector, TrendPredictor
 from prometheus_ultra.safety.self_healing import SelfHealingEngine
+from prometheus_ultra.safety.rubric import RubricScorer, RubricResult

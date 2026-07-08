@@ -250,7 +250,18 @@ class ContextEngineering:
 
         return kept
 
-    def isolate(self, parent_components: list[ContextComponent],
+    @staticmethod
+    def _compress_text(text: str, target_ratio: float = 0.5) -> str:
+        """Truncate text to approximately target_ratio of original length."""
+        if not text:
+            return text
+        max_chars = max(10, int(len(text) * target_ratio))
+        if len(text) <= max_chars:
+            return text
+        return text[:max_chars] + "..."
+
+    def isolate(self,
+                parent_components,
                 sub_task: str, max_tokens: int = 32000) -> tuple[list[ContextComponent], list[ContextComponent]]:
         """Isolate: Create separate context for sub-agent execution.
 
@@ -427,29 +438,35 @@ class ContextEngineering:
             self._stats["deletions"] = self._stats.get("deletions", 0) + (len(components) - len(result))
         return result
 
-    def get_stats(self) -> dict:
-        """Compress text by keeping key sentences."""
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        if len(sentences) <= 2:
-            return text[:int(len(text) * ratio)]
+    def localized_correction(self, query: str, error_context: str,
+                              max_chars: int = 2000) -> str | None:
+        """L-ICL: 精准局部修正（arXiv 2602.00276）。
 
-        # Keep first and last sentence, plus most relevant middle sentences
-        important_words = {"key", "important", "result", "conclusion", "therefore"}
-        scored = []
-        for i, sent in enumerate(sentences):
-            score = 0.0
-            if i == 0 or i == len(sentences) - 1:
-                score += 0.5
-            words = set(sent.lower().split())
-            if words & important_words:
-                score += 0.4
-            scored.append((score, sent))
+        2000字符定向修正 > 20000字符完整轨迹检索。
+        当查询失败时，注入目标修正而非完整历史。
 
-        scored.sort(key=lambda x: -x[0])
-        keep_count = max(2, int(len(sentences) * ratio))
-        kept = [s for _, s in scored[:keep_count]]
+        Args:
+            query: 原始查询
+            error_context: 错误/失败上下文描述
+            max_chars: 最大修正文本长度（默认2000，对齐论文）
 
-        return " ".join(kept)
+        Returns:
+            修正指令字符串，或None（无不适用修正）
+        """
+        if not query or not error_context:
+            return None
+
+        # 构建精准修正
+        correction = (
+            f"Query: {query[:200]}\n"
+            f"Issue: {error_context[:300]}\n"
+            f"Correction: {error_context[:300]}"
+        )
+
+        if len(correction) > max_chars:
+            correction = correction[:max_chars]
+
+        return correction
 
     def get_stats(self) -> dict:
         return dict(self._stats)
