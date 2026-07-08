@@ -595,8 +595,11 @@ class Omega:
         # 收集 remember 管道数据
         remember_data = {}
 
-        # WAL: write-ahead log entry
-        self.wal.write("remember", status="started", pending=["create_node"])
+        # WAL: write-ahead log entry with LCRP validation
+        wal_result = self.wal.write("remember", status="started", pending=["create_node"])
+        if wal_result < 0:
+            logger.warning("Censor WAL rejected: %s (LCRP invalid)", content[:50])
+            return ""
 
         # Gate 0: InputGuardrail
         gr = self.input_guardrail.check(content)
@@ -901,6 +904,32 @@ class Omega:
                     ))
             except Exception as e:
                 logger.debug("Topological retrieval failed: %s", e)
+
+        # Route 7: HORMA层级检索 — 文件系统式路径匹配
+        if hasattr(self, 'hierarchical'):
+            try:
+                query_path = "/" + "/".join(query.lower().strip("/").split()[:3])
+                hier_hits = self.hierarchical.retrieve(query_path, max_results=5)
+                for hit in hier_hits:
+                    all_hits.append(SearchHit(
+                        node_id=hit["node_id"], score=hit["score"] * 0.9,
+                        content=hit.get("content", ""), snippet=hit.get("content", "")[:200],
+                    ))
+            except Exception as e:
+                logger.debug("HORMA retrieval failed: %s", e)
+
+        # L-ICL: 精准局部修正 — 当召回结果稀疏时注入定向修正
+        if hasattr(self, 'context_engineering'):
+            try:
+                if len(all_hits) < 3:
+                    correction = self.context_engineering.localized_correction(
+                        query, f"Low recall coverage: {len(all_hits)} hits from {limit} limit"
+                    )
+                    if correction:
+                        recall_data['l_icl_correction'] = correction[:100]
+                        logger.debug("L-ICL correction injected for query '%s'", query[:50])
+            except Exception as e:
+                logger.debug("L-ICL correction failed: %s", e)
 
         # Deduplicate + sort (cap scores to [0,1] for cross-route consistency)
         seen = set()
@@ -1294,6 +1323,27 @@ class Omega:
 
         # EvolutionGrill
         self.evolution_grill.review({"context": context, "delta": fitness_after - fitness_before})
+
+        # CAMP: 动态专家组装(arXiv 2604.00085) — 对进化方案进行三值投票
+        try:
+            agents = list(self.multi_agent._agents.values()) if hasattr(self.multi_agent, '_agents') else []
+            if agents:
+                camp_panel = self.multi_agent._deliberate_assembly(
+                    context or "evolution",
+                    agents,
+                    ["evolve", "analyze"],
+                    min_panel_size=2
+                )
+                if len(camp_panel) >= 2:
+                    panel_agents = [a for a in agents if a["id"] in camp_panel]
+                    vote_result = self.multi_agent._three_value_vote(
+                        ["accept", "reject", "modify"], panel_agents
+                    )
+                    diagnostics["camp_vote"] = vote_result
+                    diagnostics["camp_panel"] = camp_panel
+                    logger.debug("CAMP panel assembled: %s", camp_panel)
+        except Exception as e:
+            logger.debug("CAMP deliberation failed: %s", e)
 
         # Marginal
         delta = fitness_after - fitness_before
