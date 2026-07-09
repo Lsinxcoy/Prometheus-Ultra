@@ -752,6 +752,8 @@ class ToolTaxGate:
         self._total = 0
         self._tools_used = 0
         self.gstep = GSTEPGate() if enable_gstep else None
+        self.noise_estimator = SemanticNoiseEstimator()
+        self.explainable_decider = ExplainableDecider()
 
     def decide(self, task: str, tool_info: dict | None = None) -> dict:
         """决定是否使用工具。
@@ -796,31 +798,43 @@ class ToolTaxGate:
         total_cost = prompt_cost + protocol_cost + execution_cost
 
         if any(t in low for t in _COMPLEX_TASKS):
-            estimated_gain = 0.7
+            base_gain = 0.7
             reason = "Complex task — tool likely beneficial"
             use_tool = True
         elif any(t in low for t in _MODERATE_TASKS):
-            estimated_gain = 0.5
+            base_gain = 0.5
             reason = "Moderate task — tool may help"
             use_tool = True
         else:
-            estimated_gain = 0.2
+            base_gain = 0.2
             reason = "Simple task — native CoT sufficient"
             use_tool = False
 
         if tool_info and "gain" in tool_info:
-            estimated_gain = tool_info["gain"]
+            base_gain = tool_info["gain"]
+
+        # Apply noise-adjusted gain in the fallback path too
+        noise_est = self.noise_estimator.estimate(task)
+        noise_level = noise_est["noise_score"]
+        estimated_gain = noise_adjusted_gain(base_gain, noise_level)
+        reason_extra = f" (noise={noise_level:.2f}, adj_gain={estimated_gain:.3f}"
 
         if estimated_gain <= total_cost:
             use_tool = False
-            reason += " (tool tax > gain)"
+            reason += f" (tool tax > gain; noise-adjusted)"
+        else:
+            reason += reason_extra + " > cost)"
 
         result = {
             "use_tool": use_tool,
             "reason": reason,
             "estimated_cost": round(total_cost, 4),
             "estimated_gain": round(estimated_gain, 4),
+            "noise_analysis": noise_est,
         }
+        # Also produce an explainable decision
+        xd = self.explainable_decider.decide(task, estimated_gain, noise_level)
+        result["explanation"] = xd["explanation"]
         self._decisions.append(result)
         if use_tool:
             self._tools_used += 1

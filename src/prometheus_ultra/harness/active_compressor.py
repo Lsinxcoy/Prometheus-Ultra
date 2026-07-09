@@ -508,6 +508,79 @@ class SlimeMoldExplorer:
         self._decisions.append(result)
         return result
 
+    def should_consolidate(self, token_count: int, max_tokens: int = _DEFAULT_MAX_TOKENS,
+                          text: str = "") -> dict:
+        """基于 token 数量和信息密度阈值判断是否应压缩。
+
+        Focus Agent 论文的核心决策函数：
+        - 超过容量阈值 → 必须压缩
+        - Shannon 熵低于阈值且容量紧张 → 主动压缩（信息冗余）
+        - 两者都不满足 → 维持现状
+
+        Args:
+            token_count: 当前上下文的估计 token 数
+            max_tokens: 最大允许 token 数（默认 _DEFAULT_MAX_TOKENS）
+            text: 可选，用于计算实际 Shannon 熵和密度的文本
+
+        Returns:
+            {
+                "consolidate": bool,
+                "reason": str,
+                "token_count": int,
+                "usage_ratio": float,
+                "shannon_entropy": float,
+                "information_density": float,
+            }
+        """
+        usage_ratio = token_count / max(max_tokens, 1)
+
+        # 计算 Shannon 熵和信息密度（如果有文本）
+        if text and len(text) >= 5:
+            entropy = shannon_entropy(text)
+            density = estimate_information_density(text)
+        else:
+            entropy = 0.0
+            density = min(1.0, usage_ratio * 2.0)
+
+        reasons: list[str] = []
+        consolidate = False
+
+        # 条件 1: 超过容量阈值
+        if usage_ratio >= 0.85:
+            reasons.append(f"Token count ({token_count}) exceeds 85% capacity ({max_tokens})")
+            consolidate = True
+
+        # 条件 2: 信息密度低 + 容量紧张
+        if density < self._info_density_threshold and usage_ratio >= 0.6:
+            reasons.append(
+                f"Low info density ({density:.2f} < {self._info_density_threshold}) at {usage_ratio:.0%} capacity"
+            )
+            consolidate = True
+
+        # 条件 3: 熵低（信息冗余）
+        if entropy > 0 and entropy < self._entropy_threshold and usage_ratio >= 0.5:
+            reasons.append(
+                f"Low Shannon entropy ({entropy:.1f} < {self._entropy_threshold}) at {usage_ratio:.0%} capacity"
+            )
+            consolidate = True
+
+        if not reasons:
+            reasons.append(
+                f"Sufficient capacity ({usage_ratio:.0%}), density={density:.2f}, entropy={entropy:.1f}"
+            )
+
+        if consolidate:
+            self._total_consolidated += 1
+
+        return {
+            "consolidate": consolidate,
+            "reason": "; ".join(reasons),
+            "token_count": token_count,
+            "usage_ratio": round(usage_ratio, 4),
+            "shannon_entropy": round(entropy, 4),
+            "information_density": round(density, 4),
+        }
+
     def get_stats(self) -> dict:
         return {
             "explore_count": self._total_explored,
@@ -939,4 +1012,115 @@ class ActiveCompressor:
             ) if self._total_tokens_before > 0 else 0,
             "focus_enabled": self.enable_focus,
             "focus": focus_stats,
+        }
+
+    def get_compression_history(self) -> list[dict]:
+        """获取压缩历史记录，支持锯齿模式追踪。
+
+        Focus Agent 论文依赖历史压缩模式来判断未来的压缩时机。
+        每次调用返回完整的压缩事件序列，可用于:
+
+        - 可视化 token 使用量的锯齿模式
+        - 检测压缩频率是否过高或过低
+        - 计算平均压缩间隔和幅度
+
+        Returns:
+            按时间顺序排列的压缩事件列表，每个包含:
+            - timestamp: 事件时间戳
+            - tokens_before: 压缩前总 token 数
+            - tokens_after: 压缩后总 token 数
+            - savings: 节省的 token 数
+            - method: 压缩方法 (\"threshold\", \"focus\", \"legacy\")
+            - pattern_type: 当时的锯齿模式类型
+            - pattern_detected: 是否检测到锯齿模式
+        """
+        # 从 SawToothDetector 获取压缩事件
+        raw_events: list[dict] = []
+        if self.enable_focus:
+            raw_events = list(self.saw_tooth_detector._compress_events)
+
+        # 补充锯齿模式信息
+        history: list[dict] = []
+        for event in raw_events:
+            pattern = self.saw_tooth_detector.detect_saw_tooth()
+            history.append({
+                "timestamp": event.get("timestamp", 0.0),
+                "tokens_before": event.get("tokens_before", 0),
+                "tokens_after": event.get("tokens_after", 0),
+                "savings": event.get("savings", 0),
+                "method": event.get("method", "unknown"),
+                "pattern_type": pattern.get("pattern_type", "unknown"),
+                "pattern_detected": pattern.get("pattern_detected", False),
+            })
+
+        # 如果没有 Focus 事件，从自身的统计数据构建一条摘要
+        if not history and self._compress_count > 0:
+            history.append({
+                "timestamp": time.time(),
+                "tokens_before": self._total_tokens_before,
+                "tokens_after": self._total_tokens_after,
+                "savings": self._total_tokens_before - self._total_tokens_after,
+                "method": "legacy",
+                "pattern_type": "unknown",
+                "pattern_detected": False,
+            })
+
+        return history
+
+    def analyze_saw_tooth_pattern(self) -> dict:
+        """分析锯齿模式并提供可操作的洞察。
+
+        基于 get_compression_history() 的数据，计算:
+
+        - build_phase_avg: 平均积累阶段 token 增长率
+        - compress_phase_avg: 平均压缩阶段 token 节省率
+        - cycle_count: 完整 build-compress 周期数
+        - frequency: 压缩频率（每 N 次调用一次压缩）
+        - recommendation: 建议（加速/减速/维持压缩）
+
+        Returns:
+            锯齿模式分析结果字典
+        """
+        history = self.get_compression_history()
+        pattern = self.saw_tooth_detector.detect_saw_tooth()
+
+        if not history:
+            return {
+                "cycle_count": 0,
+                "frequency": 0.0,
+                "build_phase_avg": 0.0,
+                "compress_phase_avg": 0.0,
+                "recommendation": "insufficient_data",
+                "current_pattern": pattern.get("pattern_type", "unknown"),
+            }
+
+        # 计算平均压缩节省
+        savings_pcts = []
+        for h in history:
+            before = h["tokens_before"]
+            if before > 0:
+                savings_pcts.append(h["savings"] / before)
+
+        avg_savings = sum(savings_pcts) / len(savings_pcts) if savings_pcts else 0.0
+
+        # 计算压缩频率
+        total_events = len(history)
+        frequency = total_events / max(total_events, 1)  # arbitrary scale
+
+        # 判断模式
+        rec = "maintain"
+        if pattern.get("pattern_type") == "monotonic_up" and avg_savings < 0.2:
+            rec = "increase_compression"
+        elif pattern.get("pattern_type") == "flat":
+            rec = "maintain"
+        elif avg_savings > 0.5:
+            rec = "reduce_compression"
+
+        return {
+            "cycle_count": total_events,
+            "frequency": round(frequency, 3),
+            "build_phase_avg": round(pattern.get("last_build_up_ratio", 0.0), 4),
+            "compress_phase_avg": round(avg_savings * 100, 1),
+            "current_pattern": pattern.get("pattern_type", "unknown"),
+            "recommendation": rec,
         }
