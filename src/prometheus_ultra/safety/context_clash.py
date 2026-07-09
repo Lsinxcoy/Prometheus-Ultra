@@ -1,13 +1,15 @@
 """ContextClashDetector — Detects conflicting information in context.
 
-Based on: "Context Clash: Sharded Prompts and Multi-turn Degradation"
+Implements detection of multi-turn conversation degradation patterns
+as described in the referenced paper.
+
+Based on: "LLMs Get Lost In Multi-Turn Conversation"
 (arXiv:2505.06120, Microsoft/Salesforce 2025)
 
 Key Concepts from Paper:
-    1. Sharded prompts (step-by-step info collection) cause 39% performance drop
-    2. Early incorrect answers留在上下文中会误导后续推理
-    3. o3 accuracy dropped from 98.1 to 64.1 with context clash
-    4. Contradictions between context segments degrade reasoning
+    1. LLMs suffer performance degradation in multi-turn conversations
+    2. Information from early turns can be lost or contradicted in later turns
+    3. Detection of contradictions, repetitions, and information loss
 
 Algorithm:
     1. Segment context into semantic chunks

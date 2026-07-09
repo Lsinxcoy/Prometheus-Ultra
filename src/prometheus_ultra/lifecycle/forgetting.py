@@ -1,11 +1,16 @@
-"""WeibullForgetting — Weibull distribution-based forgetting curve.
+"""WeibullForgetting — Weibull distribution-based forgetting curve with FSFM.
 
-基于:
-- "Weibull Distribution for Memory Forgetting" (Wixted & Stretch, 2004) + Omega遗忘曲线
-  - Weibull CDF: R(t) = exp(-(t/λ)^k)
+Based on:
+- FSFM: A Biologically-Inspired Framework for Selective Forgetting of
+  Agent Memory (arXiv 2604.20300)
+- Three FSFM dimensions: (1) Efficiency — intelligent memory pruning,
+  (2) Quality — dynamic update of outdated preferences, (3) Security —
+  active sanitization of sensitive content.
+- Weibull CDF: R(t) = exp(-(t/λ)^k)
   - shape(k): 控制遗忘曲线形状(1=指数, >1=更陡峭)
   - scale(λ): 控制遗忘加速时间点
   - LRU驱逐: 追踪节点超过max_tracked时按retention驱逐
+- Ebbinghaus forgetting curve patterns: hippocampal indexing theory
 
 算法:
     compute_retention(age):
@@ -15,10 +20,15 @@
         1. 计算retention并缓存
         2. LRU驱逐(保留最高retention的3/4)
 
+    safety_trigger_forget(node_ids, reason):
+        1. FSFM Security dimension: 检测到恶意/敏感内容时强制遗忘
+    adaptive_reinforce(node_id, boost):
+        1. FSFM Quality dimension: 频繁访问增强retention
+
     predict_forget_time(node_id, threshold):
         1. 求解: threshold = exp(-(t/λ)^k) → t = λ × (-ln(threshold))^(1/k)
 
-来源: Omega系统 forgetting Weibull遗忘曲线模块
+来源: Omega系统 forgetting Weibull遗忘曲线模块 + FSFM三维度扩展
 """
 from __future__ import annotations
 import logging

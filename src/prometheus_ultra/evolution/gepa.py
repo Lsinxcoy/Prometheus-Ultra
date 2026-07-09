@@ -1,7 +1,8 @@
 """GEPA — Gradient-Enhanced Parameter Adaptation.
 
-Based on: EvoAgentBench leaderboards + "Gradient-based Hyperparameter Optimization"
-(arXiv:1502.03421, Bergstra et al.) + "Differentiable Parameter Evolution" (arXiv:2310.13212)
+Adaptive gradient-based hyperparameter optimization with momentum.
+Performs finite-difference gradient estimation for continuous parameter
+tuning across evolution rounds.
 
 Key Concepts:
     1. Track parameter gradients across evolution rounds
@@ -9,6 +10,11 @@ Key Concepts:
     3. Gradient-guided search direction (descent/ascent)
     4. Momentum accumulation for smoother convergence
     5. Adaptive learning rate with gradient clipping
+
+References:
+    - Bergstra et al. "Algorithms for Hyper-Parameter Optimization" NIPS 2011
+    - "Population Based Training of Neural Networks" (PBT, arXiv:1711.09846)
+    - Gradient descent with momentum (Polyak, 1964)
 
 Algorithm:
     for each round:

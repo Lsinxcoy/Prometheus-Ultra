@@ -1,7 +1,8 @@
 """HebbianMemory — Hebbian edge-weight learning with hub-driven consolidation.
 
 Based on HeLa-Mem (arXiv 2604.16839):
-"赫布边权从使用中涌现结构。按网络拓扑hub节点决定consolidation，非按时间/相似度。"
+  Three bio-inspired memory mechanisms: association, consolidation,
+  spreading activation. Hub-driven consolidation (not time/similarity).
 
 Hebbian principle: edges that fire together wire together.
 Consolidation is driven by hub nodes (high-degree nodes in the knowledge graph),
@@ -12,6 +13,7 @@ Architecture:
     - update_edge() strengthens weights on co-retrieval (Hebbian plasticity)
     - find_hubs() ranks nodes by degree × avg edge weight (hub centrality)
     - should_consolidate() identifies nodes connected to hub nodes
+    - activate() spreads activation through graph (paper's third mechanism)
 
 Thread Safety:
     Uses threading.Lock for all mutable operations.
@@ -142,6 +144,52 @@ class HebbianMemory:
                 )
             else:
                 entry["weight"] = new_weight
+
+    # ============================================================
+    # Spreading activation (HeLa-Mem third mechanism)
+    # ============================================================
+
+    def activate(self, node_id: str, decay_factor: float = 0.5,
+                 max_depth: int = 3) -> dict[str, float]:
+        """Spread activation through the graph from a source node.
+
+        When node(i) is activated, activation propagates to neighbors
+        with exponential decay. Core HeLa-Mem mechanism.
+
+        Args:
+            node_id: Source node ID.
+            decay_factor: Per-hop decay (default 0.5).
+            max_depth: Max propagation depth (default 3).
+
+        Returns:
+            {node_id: activation_level}.
+        """
+        activation: dict[str, float] = {node_id: 1.0}
+        frontier: set[str] = {node_id}
+        depth = 0
+        while frontier and depth < max_depth:
+            depth += 1
+            next_frontier: set[str] = set()
+            for current in frontier:
+                current_act = activation.get(current, 0.0)
+                if current_act <= 0:
+                    continue
+                with self._lock:
+                    neighbors: list[str] = []
+                    for (u, v) in self._edges:
+                        if u == current:
+                            neighbors.append(v)
+                        elif v == current:
+                            neighbors.append(u)
+                for neighbor in neighbors:
+                    propagated = current_act * decay_factor
+                    existing = activation.get(neighbor, 0.0)
+                    new_val = max(existing, propagated)
+                    if abs(new_val - existing) > 0.01:
+                        activation[neighbor] = new_val
+                        next_frontier.add(neighbor)
+            frontier = next_frontier
+        return activation
 
     # ============================================================
     # Hub detection

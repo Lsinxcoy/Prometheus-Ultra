@@ -1,4 +1,4 @@
-"""Owner-Harm Trust Boundary — arXiv 2606.04704.
+"""Owner-Harm Trust Boundary — Multi-agent memory access control.
 
 Every knowledge artifact has an "owner" (the agent/system that created it).
 Operations that cross trust boundaries (e.g. using memory from agent A while
@@ -7,6 +7,10 @@ operating as agent B) require explicit permission. This prevents:
 - Cross-contamination: memory from one agent contaminating another
 - Hallucination transfer: false beliefs propagating across agents
 - Authority confusion: one agent speaking with another's epistemic authority
+
+This module implements trust-boundary enforcement originally derived from
+the Owner-Harm concept in agent safety literature. The conceptual model
+draws on common patterns from multi-agent security and access control.
 
 Usage::
 

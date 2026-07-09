@@ -1,13 +1,21 @@
 """OpenSpaceEvolution — Open-space exploration with Niching and fitness landscape analysis.
 
-Based on: EvoAgentBench + "Niching in Evolutionary Computation"
-(arXiv:1805.00534) + "Fitness Landscape Analysis" (arXiv:2006.08199)
+Implements speciation via fitness sharing to maintain population diversity
+during evolutionary optimization. Fitness sharing penalizes crowded regions
+of the search space, encouraging the formation of multiple niches/species.
 
 Key Concepts:
     1. Niching: maintain diversity through speciation/sub-populations
     2. Fitness sharing: penalize crowded regions of search space
     3. Fitness landscape: track fitness distribution, peaks, valleys
     4. Adaptive niche radius: adjust based on population diversity
+
+References:
+    - Goldberg & Richardson "Genetic algorithms with sharing for multimodal
+      function optimization" (1987, ICGA)
+    - Deb & Goldberg "An investigation of niche and species formation in
+      genetic function optimization" (1989, ICGA)
+    - Mahfoud "Niching methods for genetic algorithms" (1995, IlliGAL report)
 
 Algorithm (Fitness Sharing):
     for each individual i:

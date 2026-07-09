@@ -1,14 +1,16 @@
 """HeLaMem — Hebbian Learning and Associative Memory (HeLa-Mem).
 
 Based on arXiv 2604.16839:
-  SOTA on LoCoMo benchmark. Hebbian edge weights emerge from co-activation
-  patterns. Hub nodes (densely connected) determine consolidation targets —
-  NOT recency or similarity.
+  SOTA on LoCoMo benchmark. Three bio-inspired mechanisms:
+  1. Association: Hebbian edge weights emerge from co-activation patterns
+  2. Consolidation: Hub nodes (densely connected) determine consolidation targets
+  3. Spreading activation: Activation propagates through graph edges
 
 Architecture:
   - Weighted undirected graph: nodes = memory items, edges = co-activation.
   - Hebbian update: w_ij += η · act(i) · act(j) when two nodes fire together.
   - Hub detection via degree centrality (sum of incident edge weights).
+  - **Spreading activation**: when node i is activated, propagate 50% to neighbors.
   - Consolidation targeting based on topological hub membership, not recency.
 
 Thread safety:
@@ -17,8 +19,9 @@ Thread safety:
 Usage:
     mem = HeLaMem(eta=0.1)
     mem.observe_access("node_a", "node_b")   # strengthens edge
-    hubs = mem.get_hub_nodes(top_k=5)          # [(node_id, score), ...]
-    clusters = mem.hela_consolidate()          # {hub: [neighbors]}
+    mem.activate("node_a")                    # spreading activation
+    hubs = mem.get_hub_nodes(top_k=5)         # [(node_id, score), ...]
+    clusters = mem.hela_consolidate()         # {hub: [neighbors]}
     for u, v, w in mem.get_edges("node_a"):
         print(f"{u} --{w:.2f}--> {v}")
     stats = mem.get_stats()
@@ -64,7 +67,7 @@ class HeLaMem:
     # Hebbian plasticity
     # ---------------------------------------------------------------
 
-    def observe_access(self, node_i: str, node_j: str) -> None:
+    def observe_access(self, node_i: str, node_j: str, decay: float = 0.0) -> None:
         """Record co-activation of two nodes and update their edge weight.
 
         Hebbian update:
@@ -75,6 +78,7 @@ class HeLaMem:
         Args:
             node_i: First node ID.
             node_j: Second node ID.
+            decay: Optional decay amount (subtracted from all edges, default 0.0).
         """
         if node_i == node_j:
             return
@@ -88,6 +92,67 @@ class HeLaMem:
                 "HeLa edge %s<->%s weight %.3f -> %.3f",
                 node_i[:8], node_j[:8], old, new,
             )
+        # Apply global decay to simulate forgetting
+        if decay > 0:
+            with self._lock:
+                for edge_key in list(self._edges.keys()):
+                    w = self._edges[edge_key]
+                    new_w = max(0.0, w - decay)
+                    if new_w <= 0:
+                        del self._edges[edge_key]
+                    else:
+                        self._edges[edge_key] = new_w
+
+    # ---------------------------------------------------------------
+    # Spreading activation (paper's third mechanism)
+    # ---------------------------------------------------------------
+
+    def activate(self, node_id: str, decay_factor: float = 0.5,
+                 max_depth: int = 3) -> dict[str, float]:
+        """Spread activation from a source node through the graph.
+
+        When a node is activated, activation propagates to neighbors
+        with exponential decay. This is the third core mechanism from
+        HeLa-Mem (association, consolidation, spreading activation).
+
+        Args:
+            node_id: The initially activated node.
+            decay_factor: Proportion of activation that passes each edge
+                          (default 0.5 = 50% per hop).
+            max_depth: Maximum propagation depth (default 3).
+
+        Returns:
+            {node_id: activation_level} for all activated nodes.
+        """
+        activation: dict[str, float] = {node_id: 1.0}
+        frontier: set[str] = {node_id}
+        depth = 0
+
+        while frontier and depth < max_depth:
+            depth += 1
+            next_frontier: set[str] = set()
+            for current in frontier:
+                current_act = activation.get(current, 0.0)
+                if current_act <= 0:
+                    continue
+                # Find all neighbors
+                with self._lock:
+                    neighbors: list[str] = []
+                    for (u, v) in self._edges:
+                        if u == current:
+                            neighbors.append(v)
+                        elif v == current:
+                            neighbors.append(u)
+                for neighbor in neighbors:
+                    propagated = current_act * decay_factor
+                    existing = activation.get(neighbor, 0.0)
+                    new_val = max(existing, propagated)
+                    if abs(new_val - existing) > 0.01:
+                        activation[neighbor] = new_val
+                        next_frontier.add(neighbor)
+            frontier = next_frontier
+
+        return activation
 
     # ---------------------------------------------------------------
     # Hub detection  (degree centrality)
