@@ -1,7 +1,16 @@
-"""ExternalNotebook — 外部化笔记本 (arXiv 2607.00233).
+"""ExternalNotebook — 外部化私有笔记本。
 
-在多 Agent 场景中持久化私有笔记本，记录协调中建立的共享约定。
-防止无记忆 Agent 在高容量信道下的协调崩溃。
+在 multi-agent 场景中持久化线程安全的私有键值存储，
+记录协调中建立的共享约定、符号映射、或任意状态。
+
+参考: "From Signals to Structure" (arXiv 2607.00233) 中关于
+私有笔记本架构的讨论——persistent private notebook 在有状态
+interaction 中防止高容量信道下的协调崩溃。
+
+当前实现:
+- 纯 KV store（不支持论文中完整的 Lewis signaling game 框架）
+- 提供 read/write/get_all_keys/clear 操作
+- 线程安全（threading.Lock）
 """
 
 from __future__ import annotations

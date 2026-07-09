@@ -1,9 +1,14 @@
-"""HierarchicalMemory — HORMA层级记忆模块（arXiv 2606.11680）。
+"""HierarchicalMemory — HORMA层级存储层（arXiv 2606.11680）。
 
-文件系统式层级结构 > 扁平语义检索。token降78-97%，OOD泛化超过无限制baseline。
+文件系统式层级结构的路径检索层。token降78-97%的论断来自原文，
+当前实现仅提供存储和路径前缀检索，不包含完整的 multi-agent 架构。
 
 核心思想：将记忆组织为文件系统式的层级目录结构，
 而不是平铺的语义空间。每个节点有路径标识，路径越近语义越相关。
+
+注意: HORMA原文的完整架构包括 RL navigator + multi-agent traversal，
+这些在 rl_navigator.py（PARTIAL）和 hierarchical_memory.py 中有部分实现。
+本文件仅提供存储层。
 """
 from __future__ import annotations
 

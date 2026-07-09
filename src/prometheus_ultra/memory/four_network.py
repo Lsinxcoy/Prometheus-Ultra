@@ -1,22 +1,19 @@
-"""FourNetworkMemory — 4-network cognitive memory with Generative Agents principles.
+"""FourNetworkMemory — 4-network cognitive memory with retrieval scoring.
 
-Based on: "Generative Agents: Interactive Simulacra of Human Behavior"
-(arXiv:2304.03442, Park et al. 2023)
+参考: "Generative Agents: Interactive Simulacra of Human Behavior"
+(arXiv:2304.03442, Park et al. 2023) 中的 retrieval scoring 公式:
+    score = recency^δ × importance × relevance
 
-Key Concepts from Paper:
-    1. Memory Stream: chronological record of experiences
-    2. Retrieval: recency + importance + relevance scoring
-    3. Reflection: higher-level synthesis from memories
-    4. Planning: reflection-informed action planning
+当前实现:
+- 4-network split（experience/semantic/procedural/episodic）— 这是对原论文
+  单 memory stream 的扩展，非原文设计
+- Retrieval scoring: recency_decay × importance × keyword_relevance
+- Reflection: 基于关键词的规则聚合（非原文的 LLM 驱动 reflection）
+- Planning: 未实现（标记为扩展）— planning 组件仅声明在 docstring 中
 
-Paper Finding:
-    "Generative agents produce believable individual and social behaviors
-     that are more than just isolated instantiations"
-
-Enhancement:
-    - Added recency decay to retrieval scoring
-    - Added importance-based memory prioritization
-    - Added reflection synthesis capability
+差异说明:
+- 原文使用单条 memory stream；4-network split 是本实现的创新扩展
+- 原文的 reflection 用 LLM 合成高层洞察；本实现用规则聚合
 """
 
 from __future__ import annotations
