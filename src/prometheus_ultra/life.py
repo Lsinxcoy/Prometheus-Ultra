@@ -696,11 +696,22 @@ class Omega:
         })
         failing_dims = rubric_result.get_failing_dimensions(minimum=0.5)
         if failing_dims:
-            logger.warning("RUBAS rubric violations in remember: %s (scores: tool_use=%.2f, argument=%.2f, response=%.2f, helpfulness=%.2f, composite=%.2f)",
-                           failing_dims, rubric_result.tool_use, rubric_result.argument,
-                           rubric_result.response, rubric_result.helpfulness, rubric_result.composite)
+            logger.warning("RUBAS rubric violations in remember: %s", failing_dims)
             self.failure_log.log("remember", "rubric_violations",
                                  {"failing_dimensions": failing_dims, "scores": rubric_result._asdict()})
+
+        # Gate 3.6: Memory Poisoning Detection (MPBench 2606.04329 / Trojan Hippo 2605.01970)
+        # Check for trigger keywords that indicate data exfiltration / sleeper attacks
+        _TRIGGER_KEYWORDS = {"bank account", "medical history", "social security", "password:", 
+                           "credit card", "transfer $", "confidential", "secret key", "api_token"}
+        content_lower = content.lower()
+        trigger_hits = [kw for kw in _TRIGGER_KEYWORDS if kw in content_lower]
+        if trigger_hits:
+            logger.warning("Memory security: trigger keywords detected in remember: %s", trigger_hits)
+            self.failure_log.log("remember", "trigger_keyword_detected", {"triggers": trigger_hits})
+            # Don't block — just log. Blocking would break legitimate uses.
+            # But flag for downstream sleeper detection
+            self.owner_harm.flag_suspicious(node.id, "trigger_keywords", trigger_hits)
 
         # Gate 4: VeracityBayesian
         self.veracity.compute_posterior_compat(

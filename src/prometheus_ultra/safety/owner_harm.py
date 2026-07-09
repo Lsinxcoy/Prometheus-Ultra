@@ -172,3 +172,27 @@ class OwnerHarmTrustBoundary:
     def get_boundary_violations(self, limit: int = 10) -> list[dict]:
         """Return the most recent boundary violation attempts, up to *limit*."""
         return list(self._boundary_violations[-limit:])
+
+    def flag_suspicious(self, artifact_id: str, reason: str, details: list[str]) -> dict:
+        """Flag an artifact as suspicious (e.g. potential memory poisoning).
+
+        Used by MPBench/Sleeper/Trojan Hippo defenses to mark content
+        that may contain trigger keywords or injection payloads.
+
+        Args:
+            artifact_id: The node ID or content identifier.
+            reason: Classification of the suspicion (e.g. 'trigger_keywords').
+            details: Specific trigger items found.
+
+        Returns: {"flagged": True, "artifact_id": str, "reason": str}
+        """
+        logger.warning("Owner-Harm: flagged %s as suspicious: %s (%s)",
+                       artifact_id, reason, details)
+        if not hasattr(self, '_suspicious_flags'):
+            self._suspicious_flags = []
+        self._suspicious_flags.append({
+            "artifact_id": artifact_id,
+            "reason": reason,
+            "details": details,
+        })
+        return {"flagged": True, "artifact_id": artifact_id, "reason": reason}
