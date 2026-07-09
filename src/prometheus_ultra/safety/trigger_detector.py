@@ -1,23 +1,19 @@
-"""TriggerDetector — Detects sleeper memory poisoning and delayed trigger attacks.
+"""TriggerDetector — 触发式载荷模式检测器。
 
-Based on:
-    - arXiv 2605.15338 (Sleeper Memory Poisoning)
-    - arXiv 2605.01970 (Trojan Hippo)
+基于正则匹配检测可能指示触发式载荷的语言模式。
 
-Key Findings:
-    Sleeper memory poisoning achieves 99.8% write success on GPT-5.5 and
-    95% on Kimi-K2.6. Among successful retrievals, poisoned memories cause
-    attacker-intended actions in 60-89% of cases across models.
+注意: 本文件曾引用 arXiv 2605.15338 (Sleeper Memory Poisoning) 
+和 arXiv 2605.01970 (Trojan Hippo)，这两篇论文描述了完整的
+记忆中毒攻击管线。当前实现仅为基于正则的指令语言模式扫描，
+不实现触发→存储→持久化→激活的完整攻击闭环。
 
-    Attack pipeline:
-    1. Adversary inserts trigger in a document
-    2. Agent stores fabricated memory
-    3. Memory persists across 100+ benign sessions
-    4. Memory surfaces later and steers behavior toward attacker goals
-
-This detector scans content for instruction-like language, temporal triggers,
-behavioral directives, conditional triggers, future-triggered actions, and
-exfiltration indicators (bank accounts, passwords, transfers).
+检测模式:
+1. 指令型语言（"记住..."、"不要忘记"）
+2. 条件触发（"当用户提到X时，做Y"）
+3. 时间触发（"3小时后"、"下次会话"）
+4. 行为指导（"始终回复..."、"绝不提及..."）
+5. 未来触发动作（"下次用户问..."）
+6. 渗漏指标（银行账号、密码、转账）
 """
 
 from __future__ import annotations

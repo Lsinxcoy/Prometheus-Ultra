@@ -1,21 +1,19 @@
-"""DataExfiltrationDetector — Detects Trojan Hippo-style data exfiltration attacks.
+"""DataExfiltrationDetector — 敏感内容检测与工具调用关联分析。
 
-Based on arXiv 2605.01970 (Trojan Hippo):
+参考: arXiv 2605.01970 (Trojan Hippo) 中描述的数据泄露攻击模式。
+该论文描述了通过单一被污染的工具调用植入休眠载荷的完整攻击流程。
 
-Key Findings:
-    Trojan Hippo achieves 85-100% Attack Success Rate against frontier models.
-    Planted memories survive 100+ benign sessions, persisting across normal
-    operations. A single compromised tool call (e.g. from a crafted email) can
-    plant a dormant payload that exfiltrates user data when trigger keywords
-    are detected.
+当前实现是**基于规则的模式匹配**，不实现 Trojan Hippo 的完整
+攻击管线（休眠载荷持久化、触发式激活、实际渗漏模拟）。
 
-This detector monitors:
-    1. Sensitive data patterns in stored memory (credit cards, SSNs, API keys,
-       passwords, bank accounts, tokens)
-    2. Downstream tool calls that attempt to exfiltrate data to external
-       endpoints
-    3. Correlation between sensitive content in memory and subsequent
-       suspicious tool calls
+实现的功能:
+1. 正则匹配敏感内容模式（信用卡/SSN/API密钥等）
+2. 跟踪下游工具调用中的网络渗漏工具使用
+3. 敏感内容与可疑工具调用的关联分析
+
+与论文的差异:
+- 论文: 跨会话持久化的休眠载荷、触发式激活、实际渗漏模拟
+- 当前: 正则扫描 + 工具调用匹配（Trojan Hippo attack pipeline 的简化前置检测）
 """
 
 from __future__ import annotations

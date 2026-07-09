@@ -1,9 +1,19 @@
-"""TieredRouter — AgentFloor 层级路由 (arXiv 2605.00334).
+"""TieredRouter — 基于关键词的简易任务复杂度路由。
 
-小模型匹配 GPT-5 在 30 个任务上，差距只在长期规划时明显。
-日常用小模型，长期规划用大模型。
+注意: 本文件名曾引用 AgentFloor (arXiv 2605.00334) 作为参考，
+但当前实现仅为基于关键词匹配的轻量级任务路由，不实现
+AgentFloor 的 30 任务/6 层级/16 模型的评估范式。
+
+当前实现:
+- 4 个路由层级: simple/routine/complex/planning
+- 基于关键词匹配（简单字符串包含）
+- 非 AgentFloor 的小模型能力阶梯评估
+
+如需真正的 AgentFloor 基准评估，需要:
+- 30 个标准化任务覆盖 6 个能力层级
+- 16 个开源模型的评估框架
+- 指令遵循/工具使用/多步协调/长期规划的层次化测试
 """
-
 from __future__ import annotations
 import logging
 from typing import Any
@@ -19,7 +29,7 @@ _TIER_KEYWORDS = {
 
 
 class TieredRouter:
-    """层级路由：根据任务复杂度路由到不同模型层级。"""
+    """层级路由：根据任务关键词匹配路由到不同复杂度层级。"""
 
     TIERS = ["simple", "routine", "complex", "planning"]
 

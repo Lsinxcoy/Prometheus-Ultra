@@ -1,6 +1,17 @@
-"""NonAdversarialLeakage — 非对抗性数据泄露检测 (arXiv 2606.17114).
+"""NonAdversarialLeakageDetector — 非对抗性数据泄露风险分类器。
 
-日常操作也会泄露数据。五类风险：数据感知/受众感知/策略合规/数据最小化/访问边界。
+参考: arXiv 2606.17114 中提出的 5 类非对抗性数据泄露：
+data_awareness, audience_awareness, policy_compliance,
+data_minimization, access_boundary。
+
+当前实现仅提供了 5 类风险分类的计数和简单风险比率计算，
+不实现论文的实际评估方法论（真实企业场景中的邮件/数据库/
+文档代理工具使用评估）。
+
+如需完整实现，需要:
+- 企业场景模拟（邮件、数据库、文档系统）
+- 真实代理工具使用模式
+- 5 类风险的细粒度评估框架
 """
 
 from __future__ import annotations

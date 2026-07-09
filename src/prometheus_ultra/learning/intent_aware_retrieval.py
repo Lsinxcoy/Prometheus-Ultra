@@ -1,12 +1,16 @@
-"""IntentAwareRetrieval — SimpleMem 意向感知检索 (arXiv 2601.02553).
+"""IntentAwareRetrieval — 意图分类检索基类。
 
-论文核心方法：
-三阶段语义无损压缩管道：
-1. 语义结构化压缩（Semantic Structured Compression）
-2. 在线语义合成（Online Semantic Synthesis）
-3. 意向感知检索规划（Intent-Aware Retrieval Planning）
+基于关键词对查询进行意图分类（factual/conceptual/operational/affective），
+使用首尾截断作为压缩方式。
 
-比现有方法更丰富：多视图检索（实体/事件/时间）。
+注意: 本文件曾引用 arXiv 2601.02553 (SimpleMem) 的三层压缩管线
+（语义结构化压缩→在线语义合成→意图感知检索规划）。
+
+当前实现的差异:
+- "压缩"为首尾截断，非论文的语义无损压缩
+- 意图分类基于简单关键词匹配
+- 多视图检索（entity/event/time）使用正则提取
+- 不包含论文的完整三层管线
 """
 
 from __future__ import annotations

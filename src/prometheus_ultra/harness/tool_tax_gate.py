@@ -1,9 +1,15 @@
-"""ToolTaxGate — G-STEP 工具税门控 (arXiv 2605.00136).
+"""ToolTaxGate — 工具使用成本门控决策器。
 
-论文核心方法：
-工具使用税——格式化成本+协议开销可能超过工具增益。
-三组件因子化框架：prompt 格式化成本、工具调用协议开销、工具执行增益。
-G-STEP 是轻量级推理时门控。
+基于三层成本分解决定是否使用工具：
+prompt_cost + protocol_cost + execution_cost vs estimated_gain
+
+注意: 本文件曾引用 arXiv 2605.00136 (G-STEP)，该论文描述了
+语义噪声条件下工具使用税可能超过收益的因子化干预框架。
+
+当前实现:
+- 3 组件成本结构
+- 收益估计使用简单关键字分类
+- 不包含论文的语义噪声分析
 """
 
 from __future__ import annotations

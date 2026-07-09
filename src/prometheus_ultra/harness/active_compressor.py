@@ -1,7 +1,12 @@
-"""ActiveCompressor — Active Context Compression (arXiv 2601.07190).
+"""ActiveCompressor — 基于阈值的主动上下文压缩器。
 
-Model 自主决定何时压缩的锯齿模式。
-Token 使用超过阈值时触发压缩，不是固定阈值。
+注意: 本文件曾引用 arXiv 2601.07190 (Focus Agent)，该论文描述了
+受黏菌启发的主动上下文压缩架构，代理自主决定何时合关键学习内容。
+
+当前实现:
+- 基于阈值（token > 85% 触发压缩）
+- 压缩策略：删除最旧的 30% 内容
+- 不包含 Focus Agent 的黏菌探索/自主决策/关键学习提取
 """
 
 from __future__ import annotations
