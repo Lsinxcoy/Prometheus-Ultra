@@ -4,6 +4,16 @@ Fused from:
 - Z:\Prometheus Ω: 42 NodeType + 40 EdgeType + 15-dim MemoryEntry
 - Genesis: extended gate types + evolution types
 - Omega-Omega: branch system + write tokens
+
+Note: This module defines the core type system (enums + dataclasses) used
+across all Prometheus Ultra subsystems. It has NO specific arXiv paper
+dependency — the types are fused from internal Omega codebase conventions
+and project-wide design requirements. All algorithmic references (search,
+evolution, memory, etc.) belong in their respective implementation modules.
+For arXiv-backed components, see:
+  - Verbatim Chunks (2601.00821) → raw_chunk field on Node
+  - PolarMem (2602.00415) → trust_state field on Node
+  - Grokers (2606.00050) → chunk-structural fields on Node
 """
 from __future__ import annotations
 

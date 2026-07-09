@@ -4,6 +4,11 @@ Structure: root / task / episode / action / raw
 Thread-safe, path-based organization beats flat semantic retrieval.
 Token usage drops to ~22% of baseline; OOD generalization exceeds
 unconstrained baselines.
+
+新增:
+- get_all_paths(): 返回所有注册的路径前缀
+- consolidate_siblings(path): 合并同���目录下的兄弟节点
+- 集成了 RL navigator 的协作接口
 """
 
 from __future__ import annotations
@@ -32,6 +37,11 @@ class HierarchicalMemory:
                  content="found a cave")
         hits = hm.retrieve("/tasks/exploration")
         path = hm.get_path("node_1")
+
+        # New operations:
+        all_paths = hm.get_all_paths()
+        merged = hm.consolidate_siblings("/tasks/exploration")
+
         stats = hm.get_stats()
     """
 
@@ -147,6 +157,164 @@ class HierarchicalMemory:
             info = self._nodes.get(node_id)
             return info["path"] if info else None
 
+    # ------------------------------------------------------------------
+    # 新增: 路径管理 API
+    # ------------------------------------------------------------------
+
+    def get_all_paths(self) -> list[str]:
+        """Return all registered path prefixes, sorted.
+
+        Useful for the RL navigator to understand available navigation options.
+
+        Returns:
+            Sorted list of path strings (e.g. ``["/", "/tasks", "/tasks/explore", ...]``).
+        """
+        with self._lock:
+            return sorted(self._tree.keys())
+
+    def get_subtree(self, path: str) -> list[dict[str, Any]]:
+        """Return all nodes under *path* (inclusive).
+
+        Args:
+            path: Query path prefix.
+
+        Returns:
+            List of node dicts under this path.
+        """
+        path = self._normalise(path)
+        with self._lock:
+            node_ids: set[str] = set()
+            for prefix, ids in self._tree.items():
+                norm_prefix = prefix.rstrip("/") if prefix != "/" else prefix
+                if norm_prefix.startswith(path):
+                    node_ids.update(ids)
+
+            results: list[dict[str, Any]] = []
+            for nid in node_ids:
+                info = self._nodes.get(nid)
+                if info:
+                    results.append({
+                        "node_id": nid,
+                        "path": info["path"],
+                        "utility": info["utility"],
+                        "content": info["content"][:200],
+                    })
+        return results
+
+    def consolidate_siblings(self, path: str) -> dict[str, Any]:
+        """Merge sibling directories at *path* by aggregating content.
+
+        "Siblings" are nodes at exactly one level deeper than *path*.
+        Consolidation merges low-utility siblings into a single summary
+        node, reducing tree depth and token usage (as discussed in
+        HORMA §3.4).
+
+        This implements the HORMA dynamic reorganisation mechanism:
+        when too many fine-grained distinctions exist at one level,
+        consolidate them into broader categories.
+
+        Args:
+            path: Parent path whose children should be consolidated.
+
+        Returns:
+            Dict with action summary: merged_groups, nodes_affected.
+        """
+        path = self._normalise(path)
+        path_parts = path.strip("/").split("/")
+        target_depth = len(path_parts) + 1  # direct children depth
+
+        with self._lock:
+            # Find all nodes that are direct children of *path*.
+            # A node is a direct child if its own path is exactly one level
+            # deeper than *path*.
+            sibling_nodes: list[str] = []
+            for nid, info in self._nodes.items():
+                node_path = info["path"]
+                node_parts = node_path.strip("/").split("/")
+                if len(node_parts) == target_depth and node_path.startswith(path + "/"):
+                    sibling_nodes.append(nid)
+
+            if len(sibling_nodes) <= 1:
+                return {"merged_groups": 0, "nodes_affected": 0,
+                        "message": "No siblings to consolidate — need at least 2 sibling nodes"}
+
+            # Compute average utility for this sibling group
+            utilities = [
+                self._nodes[nid]["utility"]
+                for nid in sibling_nodes if nid in self._nodes
+            ]
+            avg_utility = sum(utilities) / max(len(utilities), 1)
+
+            merged_groups = 0
+            nodes_affected = 0
+            message = "No siblings to consolidate"
+
+            if avg_utility < 0.5:
+                # Low-utility group: merge into a consolidated node
+                merged_content = " | ".join(
+                    self._nodes[nid]["content"][:80]
+                    for nid in sibling_nodes if nid in self._nodes
+                )
+                # Determine the immediate parent prefix from any one of the siblings
+                example_path = self._nodes[sibling_nodes[0]]["path"]
+                parent_prefix = "/" + "/".join(example_path.strip("/").split("/")[:-1])
+                merged_id = f"consolidated_{int(time.time())}"
+
+                self._nodes[merged_id] = {
+                    "path": parent_prefix,
+                    "utility": max(avg_utility, 0.5),
+                    "content": f"[Consolidated {len(sibling_nodes)} items] {merged_content}",
+                    "ts": time.time(),
+                }
+
+                # Remove old children
+                for nid in sibling_nodes:
+                    self._nodes.pop(nid, None)
+                    self._access_count.pop(nid, None)
+
+                # Rebuild tree from scratch to reflect all changes
+                self._rebuild_tree()
+
+                merged_groups = 1
+                nodes_affected = len(sibling_nodes)
+
+            else:
+                message = (f"Siblings have avg utility {avg_utility:.2f} >= 0.5 — "
+                           "no consolidation needed")
+
+        if merged_groups == 0:
+            message = message if 'message' in dir() else "No consolidation needed"
+
+        return {
+            "merged_groups": merged_groups,
+            "nodes_affected": nodes_affected,
+            "message": (f"Consolidated {merged_groups} groups affecting {nodes_affected} nodes"
+                        if merged_groups > 0
+                        else message),
+        }
+
+    def path_similarity(self, path1: str, path2: str) -> float:
+        """Compute semantic similarity between two paths.
+
+        Similarity = shared prefix depth / max depth of both paths.
+
+        Returns a float in [0.0, 1.0].
+        """
+        path1 = self._normalise(path1)
+        path2 = self._normalise(path2)
+
+        if path1 == path2:
+            return 1.0
+
+        parts1 = path1.strip("/").split("/")
+        parts2 = path2.strip("/").split("/")
+
+        shared = sum(1 for a, b in zip(parts1, parts2) if a == b)
+        max_depth = max(len(parts1), len(parts2))
+        if max_depth == 0:
+            return 1.0
+        return shared / max_depth
+
     def get_stats(self) -> dict[str, Any]:
         """Return summary statistics."""
         with self._lock:
@@ -173,6 +341,18 @@ class HierarchicalMemory:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _rebuild_tree(self) -> None:
+        """Rebuild tree index from scratch (after modifications)."""
+        self._tree.clear()
+        for nid, info in self._nodes.items():
+            path = info["path"]
+            parts = path.strip("/").split("/")
+            for depth in range(len(parts) + 1):
+                prefix = "/" + "/".join(parts[:depth])
+                if depth == 0:
+                    prefix = "/"
+                self._tree.setdefault(prefix, set()).add(nid)
 
     @staticmethod
     def _normalise(path: str) -> str:

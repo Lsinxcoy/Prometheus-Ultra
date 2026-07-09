@@ -7,6 +7,12 @@ context for a query.  Uses a simple linear policy:
 
 Reward = task_success - token_penalty  (token_penalty ≈ number of nodes read).
 
+Full-trajectory REINFORCE:
+  - Collects (state, action, reward) tuples for the entire episode.
+  - Uses discounted sum of rewards (return G_t) for each timestep.
+  - Adds entropy bonus for exploration.
+  - Log-probability gradient with baseline subtraction for variance reduction.
+
 Reference: arXiv 2606.11680 — HORMA: Hierarchical Organization and Retrieval
 via Multi-agent Architecture.
 """
@@ -35,6 +41,13 @@ class RLNavigator:
         where token_penalty penalises reading many nodes (encourages minimal
         sufficient context).
 
+    Uses **full-trajectory REINFORCE** with entropy bonus:
+
+        1. Collect (state, action, reward) for each step of an episode.
+        2. Compute discounted returns G_t = sum_{k>=t} gamma^{k-t} * r_k.
+        3. Compute policy gradient: grad = sum_t G_t * grad(log pi(a_t|s_t))
+        4. Add entropy bonus: H(pi) = -sum_a pi(a) * log(pi(a))
+
     Usage::
 
         from prometheus_ultra.memory.hierarchical_memory import HierarchicalMemory
@@ -47,11 +60,15 @@ class RLNavigator:
         nav = RLNavigator()
         context, actions = nav.navigate(hm, "/tasks/explore")
         nav.train(episodes=200)
+
+        # Inspect learned policy
+        policy = nav.get_policy_network()
     """
 
     def __init__(self, learning_rate: float = 0.01,
                  gamma: float = 0.99,
-                 token_penalty: float = 0.05) -> None:
+                 token_penalty: float = 0.05,
+                 entropy_coef: float = 0.01) -> None:
         self._lock = threading.RLock()
 
         # Policy parameters (linear softmax: 2 actions: STOP=0, DRILL=1)
@@ -65,12 +82,17 @@ class RLNavigator:
         self._lr = learning_rate
         self._gamma = gamma
         self._token_penalty = token_penalty
+        self._entropy_coef = entropy_coef
 
         # Training stats
         self._total_episodes = 0
         self._cumulative_reward = 0.0
         self._successes = 0
         self._total_tokens = 0
+
+        # Baseline for variance reduction (moving average of returns)
+        self._baseline = 0.0
+        self._baseline_rate = 0.05
 
     # ------------------------------------------------------------------
     # Public API
@@ -131,7 +153,14 @@ class RLNavigator:
     def train(self, episodes: int = 100,
               eval_hierarchy: Any = None,
               eval_queries: list[str] | None = None) -> dict[str, float]:
-        """Train the navigator via policy gradient (REINFORCE).
+        """Train the navigator via full-trajectory REINFORCE with entropy bonus.
+
+        For each episode:
+          1. Collect (state, action, reward) tuples for all step.
+          2. Compute discounted returns G_t = sum_{k>=t} gamma^{k-t} * r_k.
+          3. Compute policy gradient with baseline subtraction.
+          4. Add entropy regularisation.
+          5. Update policy weights.
 
         Args:
             episodes: Number of training episodes.
@@ -163,15 +192,62 @@ class RLNavigator:
 
         for ep in range(episodes):
             query = random.choice(queries)
-            # Run navigation.
-            context, actions = self.navigate(hm, query, max_depth=4)
-            # Simulated task success: 1 if we found at least one relevant node.
+
+            # --- Full-trajectory collection ---
+            trajectory: list[tuple[list[float], int, float]] = []
+
+            # Run navigation step-by-step, collecting (state, action) pairs
+            # with step-wise rewards.
+            with self._lock:
+                context: list[dict[str, Any]] = []
+                actions: list[int] = []
+                states: list[list[float]] = []
+                current_path = query
+                depth = 0
+
+                while depth < 4:  # max_depth = 4 during training
+                    hits = hm.retrieve(current_path, max_results=5)
+                    if not hits:
+                        break
+
+                    state = self._build_state(hits, current_path, depth)
+                    action = self._sample_action(state)
+
+                    states.append(state)
+                    actions.append(action)
+
+                    if action == 0:  # STOP
+                        context.extend(hits)
+                        break
+                    else:  # DRILL
+                        context.extend(hits)
+                        next_path = self._select_child_path(hits, current_path)
+                        if next_path == current_path:
+                            break
+                        current_path = next_path
+                        depth += 1
+
+                if depth >= 4:
+                    more = hm.retrieve(current_path, max_results=5)
+                    context.extend(m for m in more if m not in context)
+
+            # Compute reward for the trajectory
             task_success = 1.0 if len(context) >= 1 else 0.0
             token_cost = len(context) * self._token_penalty
             reward = task_success - token_cost
 
-            # Policy gradient update.
-            self._policy_gradient_step(actions, reward)
+            # Build trajectory with per-step rewards
+            # (intermediate rewards: 0 for drill steps, final reward for the episode)
+            n_steps = len(actions)
+            step_rewards = [0.0] * n_steps
+            if actions:
+                # The last action gets the full reward; intermediate steps get 0
+                step_rewards[-1] = reward
+
+            trajectory = list(zip(states, actions, step_rewards))
+
+            # --- Full-trajectory REINFORCE update ---
+            self._full_trajectory_update(trajectory)
 
             episode_rewards.append(reward)
 
@@ -198,6 +274,30 @@ class RLNavigator:
             "episodes": self._total_episodes,
         }
 
+    def get_policy_network(self) -> dict[str, Any]:
+        """Return the current policy weights for analysis.
+
+        Returns:
+            Dict with:
+            - "weights": list of [action_index][feature_index] weights
+            - "n_features": number of features
+            - "n_actions": number of actions
+            - "feature_labels": human-readable feature names
+        """
+        with self._lock:
+            return {
+                "weights": [list(row) for row in self._W],
+                "n_features": self._n_features,
+                "n_actions": 2,
+                "feature_labels": [
+                    "shared_depth_norm",
+                    "avg_utility",
+                    "path_len_norm",
+                    "bias",
+                ],
+                "action_labels": ["STOP (0)", "DRILL (1)"],
+            }
+
     def get_stats(self) -> dict[str, Any]:
         """Return navigator training statistics."""
         with self._lock:
@@ -211,7 +311,116 @@ class RLNavigator:
                 "learning_rate": self._lr,
                 "gamma": self._gamma,
                 "token_penalty": self._token_penalty,
+                "entropy_coef": self._entropy_coef,
+                "baseline": round(self._baseline, 4),
             }
+
+    # ------------------------------------------------------------------
+    # Full-trajectory REINFORCE
+    # ------------------------------------------------------------------
+
+    def _full_trajectory_update(
+        self,
+        trajectory: list[tuple[list[float], int, float]],
+    ) -> None:
+        """Full-trajectory REINFORCE with entropy bonus and baseline.
+
+        For each timestep *t* in the trajectory:
+
+            1. Compute discounted return:
+                   G_t = sum_{k=t}^{T-1} gamma^{k-t} * r_k
+
+            2. Compute advantage: A_t = G_t - baseline
+
+            3. Policy gradient:
+                   grad = A_t * grad(log pi(a_t|s_t))
+
+            4. Entropy bonus:
+                   H(pi(s_t)) = -sum_a pi(a|s_t) * log(pi(a|s_t))
+                   entropy_grad = entropy_coef * grad(H)
+
+            5. Weight update:
+                   W[a][i] += lr * (grad + entropy_grad)
+
+            6. Update baseline (moving average).
+
+        Args:
+            trajectory: List of (state, action, reward) tuples.
+        """
+        if not trajectory:
+            return
+
+        T = len(trajectory)
+
+        # --- Step 1: Compute discounted returns ---
+        returns = [0.0] * T
+        running_return = 0.0
+        for t in reversed(range(T)):
+            _, _, reward = trajectory[t]
+            running_return = reward + self._gamma * running_return
+            returns[t] = running_return
+
+        with self._lock:
+            lr = self._lr
+            gamma = self._gamma
+            ec = self._entropy_coef
+
+            # --- Step 2-5: Accumulate gradients over the trajectory ---
+            grad_accum: list[list[float]] = [
+                [0.0] * self._n_features for _ in range(2)
+            ]
+
+            for t, (state, action, _) in enumerate(trajectory):
+                G_t = returns[t]
+
+                # Advantage with baseline subtraction (variance reduction)
+                advantage = G_t - self._baseline
+
+                # Compute action probabilities for this state
+                logits = [
+                    sum(w * s for w, s in zip(weights, state))
+                    for weights in self._W
+                ]
+                max_logit = max(logits)
+                exp_logits = [math.exp(l - max_logit) for l in logits]
+                total = sum(exp_logits)
+                probs = [e / total for e in exp_logits]
+
+                # Log-probability of taken action (for REINFORCE gradient)
+                log_prob = math.log(max(probs[action], 1e-15))
+
+                # Policy gradient: grad = A_t * grad(log pi(a|s))
+                #   grad(log pi(a|s)) for linear softmax = state * (1 - p)
+                for i in range(self._n_features):
+                    grad_accum[action][i] += advantage * state[i] * (1.0 - probs[action])
+
+                # --- Entropy bonus ---
+                # H(pi) = -sum_a pi(a) * log(pi(a))
+                entropy = -sum(
+                    p * math.log(max(p, 1e-15)) for p in probs
+                )
+                # Grad of entropy w.r.t. W[a][i]:
+                #   dH/dW[a][i] = pi(a|s) * state[i] * (log(pi(a|s)) + 1 - sum_b pi(b) * log(pi(b)))
+                # Simplified: dH/dW[a][i] = -probs[a] * state[i] * (log_prob + 1)
+                for act_idx in range(2):
+                    for i in range(self._n_features):
+                        grad_accum[act_idx][i] += (
+                            ec * probs[act_idx] * state[i] *
+                            (math.log(max(probs[act_idx], 1e-15)) + 1.0)
+                        )
+
+            # Apply accumulated gradient (averaged over trajectory length)
+            for act_idx in range(2):
+                for i in range(self._n_features):
+                    self._W[act_idx][i] += lr * grad_accum[act_idx][i] / T
+
+            # Update baseline (moving average of returns)
+            # Use the first return as representative
+            if returns:
+                self._baseline = (
+                    (1.0 - self._baseline_rate) * self._baseline +
+                    self._baseline_rate * returns[0]
+                )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -273,27 +482,6 @@ class RLNavigator:
                     max_depth = pd
                     best = p
         return best
-
-    def _policy_gradient_step(self, actions: list[int],
-                              reward: float) -> None:
-        """Apply a REINFORCE-style update.
-
-        For each timestep, approximate::
-
-            dW[a] += lr * gamma^t * reward * state
-        """
-        # TODO: store full episode trajectories for proper REINFORCE.
-        # For the minimal implementation, we update using the last action
-        # as a simplified surrogate.
-        if not actions:
-            return
-        last_action = actions[-1]
-        lr = self._lr
-        with self._lock:
-            for i in range(self._n_features):
-                # Crude surrogate gradient: nudge weights for the taken
-                # action in the direction of the reward.
-                self._W[last_action][i] += lr * self._gamma * reward * 0.01
 
     @staticmethod
     def _populate_training_data(hm: Any) -> None:

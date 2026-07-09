@@ -7,13 +7,20 @@
   - 可靠性: 稳定性指标
   - 可维护性: 代码质量
 
+Note: This module implements quality gates for evolution results using the
+ISO/IEC 25010 quality framework. It has NO specific arXiv paper dependency.
+The five gates (functional, performance, reliability, diversity, convergence)
+are a project-specific adaptation of standard software quality metrics to the
+evolutionary computation domain.
+
 算法:
     check(evolution_result):
         1. 功能检查: 输出是否有效
         2. 性能检查: 适应度提升是否足够
         3. 可靠性检查: 变异率是否在安全范围
-        4. 可维护性检查: 复杂度是否可控
-        5. 综合决策: 通过/警告/拒绝
+        4. 多样性检查: 种群多样性
+        5. 收敛性检查: 是否过度拟合
+        6. 综合决策: 通过/警告/拒绝
 
 复杂度:
     check(): O(G) 其中 G = 门禁数量
@@ -232,6 +239,51 @@ class EvolutionQualityGates:
             "avg_score": sum(r.avg_score for r in self._reports) / len(self._reports),
         }
     
+    def get_gate_status(self, report: QualityReport | None = None) -> dict:
+        """Return pass/fail status per gate with scores.
+
+        Args:
+            report: Optional specific report to check. If None, checks the last report.
+
+        Returns:
+            dict with per-gate status, pass/fail counts, and overall result.
+        """
+        if report is None:
+            if not self._reports:
+                return {"overall": "no_reports", "gates": {}}
+            report = self._reports[-1]
+
+        gate_status: dict[str, dict] = {}
+        pass_count = 0
+        fail_count = 0
+        warn_count = 0
+
+        for check in report.checks:
+            result_str = check.result.value if hasattr(check.result, "value") else str(check.result)
+            gate_status[check.name] = {
+                "result": result_str,
+                "score": round(check.score, 4),
+                "message": check.message,
+            }
+            if check.result == GateResult.PASS:
+                pass_count += 1
+            elif check.result == GateResult.FAIL:
+                fail_count += 1
+            else:
+                warn_count += 1
+
+        return {
+            "overall": report.overall.value if hasattr(report.overall, "value") else str(report.overall),
+            "gates": gate_status,
+            "pass_count": pass_count,
+            "warn_count": warn_count,
+            "fail_count": fail_count,
+            "total_gates": len(report.checks),
+            "pass_rate": round(report.pass_rate, 4),
+            "avg_score": round(report.avg_score, 4),
+            "timestamp": report.timestamp,
+        }
+
     # 兼容别名: life.py 调用 check_step()
     def check_step(self, step: str = "", step_number: int = 0, max_steps: int = 0) -> tuple:
         """检查步骤是否允许继续 (兼容别名)."""
