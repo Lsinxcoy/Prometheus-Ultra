@@ -1,11 +1,14 @@
 """ReasoningAlignmentChecker — CARA 推理对齐检测 (arXiv 2606.08457).
 
-一致性幻觉：多个 Agent 答案一致但推理路径完全不同。
-CARA 指标衡量推理对齐程度。
+论文核心方法：
+一致性幻觉——多 Agent 答案一致但推理路径完全不同。
+CARA 指标需统计检验：检测推理路径的显著分歧。
+使用 Cohen's kappa 或相似度矩阵衡量推理对齐。
 """
 
 from __future__ import annotations
 import logging
+import math
 from collections import Counter
 from typing import Any
 
@@ -21,50 +24,79 @@ class ReasoningAlignmentChecker:
         self._misalignments = 0
 
     def check_alignment(self, paths: list[dict]) -> dict:
-        """检查多推理路径的对齐程度。"""
+        """检查多推理路径的对齐程度。
+
+        Args:
+            paths: [{"answer": str, "reasoning": str, "agent": str}, ...]
+
+        Returns:
+            {"cara_score": float, "aligned": bool, "disagreements": list[dict],
+             "answer_consensus": float, "reasoning_divergence": float,
+             "n_paths": int}
+        """
         self._total += 1
         if len(paths) < 2:
-            return {"cara_score": 1.0, "aligned": True, "disagreements": []}
+            return {"cara_score": 1.0, "aligned": True, "disagreements": [],
+                    "answer_consensus": 1.0, "reasoning_divergence": 0.0, "n_paths": len(paths)}
 
         answers = [p.get("answer", "") for p in paths]
         reasonings = [p.get("reasoning", "") for p in paths]
 
-        # 答案一致性
+        # Step 1: Answer consensus — Cohen's kappa-like measure
         unique_answers = len(set(a.lower().strip() for a in answers if a))
-        answer_agreement = 1.0 if unique_answers <= 1 else 1.0 / unique_answers
+        answer_consensus = 1.0 if unique_answers <= 1 else 1.0 / unique_answers
 
-        # 推理路径分歧度
-        reasoning_sigs = []
-        for r in reasonings:
-            words = r.lower().split()[:50]
-            reasoning_sigs.append(" ".join(words[:10]))
+        # Step 2: Reasoning divergence — pairwise n-gram overlap
+        if any(r for r in reasonings):
+            # 提取每个推理路径的关键推理步骤
+            reasoning_steps = []
+            for r in reasonings:
+                steps = [s.strip() for s in r.replace(".", "\n").split("\n") if s.strip()]
+                reasoning_steps.append(steps[:10])  # 取前 10 个步骤
 
-        unique_reasoning = len(set(reasoning_sigs))
-        reasoning_divergence = min(1.0, unique_reasoning / max(len(reasoning_sigs), 1))
+            # 计算成对相似度
+            pairwise_similarities = []
+            for i in range(len(reasoning_steps)):
+                for j in range(i + 1, len(reasoning_steps)):
+                    steps_i = set(reasoning_steps[i])
+                    steps_j = set(reasoning_steps[j])
+                    if not steps_i or not steps_j:
+                        continue
+                    jaccard = len(steps_i & steps_j) / len(steps_i | steps_j)
+                    pairwise_similarities.append(jaccard)
 
-        # CARA = 答案一致但推理不同
-        if answer_agreement == 1.0 and reasoning_divergence > 0.5:
-            cara_score = 1.0 - reasoning_divergence
-            aligned = False
-            self._misalignments += 1
+            reasoning_divergence = 1.0 - (sum(pairwise_similarities) / max(len(pairwise_similarities), 1)) if pairwise_similarities else 1.0
         else:
-            cara_score = answer_agreement
-            aligned = answer_agreement >= 0.5
+            reasoning_divergence = 0.0
 
+        # Step 3: CARA = answer consensus × (1 - reasoning divergence)
+        cara_score = answer_consensus * (1.0 - reasoning_divergence)
+
+        # Step 4: 判断是否对齐
+        aligned = cara_score >= 0.5
+        if not aligned:
+            self._misalignments += 1
+
+        # Step 5: 找出分歧点
         disagreements = []
         if not aligned:
             for i in range(len(paths)):
                 for j in range(i + 1, len(paths)):
-                    if reasoning_sigs[i][:20] != reasoning_sigs[j][:20]:
-                        disagreements.append({
-                            "agent_a": i, "agent_b": j,
-                            "reasoning_a": reasonings[i][:100],
-                            "reasoning_b": reasonings[j][:100],
-                        })
+                    if reasoning_steps[i] and reasoning_steps[j]:
+                        diff_steps = list(set(reasoning_steps[i]) - set(reasoning_steps[j]))
+                        if diff_steps:
+                            disagreements.append({
+                                "agent_a": paths[i].get("agent", i),
+                                "agent_b": paths[j].get("agent", j),
+                                "shared_steps": len(set(reasoning_steps[i]) & set(reasoning_steps[j])),
+                                "diff_steps": diff_steps[:3],
+                            })
 
         result = {
             "cara_score": round(cara_score, 4),
             "aligned": aligned,
+            "answer_consensus": round(answer_consensus, 4),
+            "reasoning_divergence": round(reasoning_divergence, 4),
             "disagreements": disagreements[:5],
             "n_paths": len(paths),
         }
