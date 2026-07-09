@@ -1,27 +1,97 @@
 """ToolTaxGate — G-STEP 工具税门控 (arXiv 2605.00136).
 
-工具使用税：格式化成本 + 协议开销可能超过工具增益。
-很多场景原生 CoT 就够。
+论文核心方法：
+工具使用税——格式化成本+协议开销可能超过工具增益。
+三组件因子化框架：prompt 格式化成本、工具调用协议开销、工具执行增益。
+G-STEP 是轻量级推理时门控。
 """
+
 from __future__ import annotations
 import logging
 import re
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
-_SIMPLE_TASKS = {"calculate", "convert", "format", "today", "time", "weather", "math"}
+# 简单任务：原生 CoT 通常足够
+_SIMPLE_COG_TASKS = {"calculate", "convert", "format", "today", "time", "weather", "math", "echo"}
+# 中等任务：工具可能有用
+_MODERATE_TASKS = {"search", "lookup", "translate", "summarize", "check", "find"}
+# 复杂任务：工具通常必要
+_COMPLEX_TASKS = {"analyze", "compare", "optimize", "code", "compile", "debug", "deploy"}
+
+# 工具协议开销估计
+_PROTOCOL_OVERHEAD = 0.15  # 格式化 + 参数序列化开销
+_EXECUTION_GATE = 0.10     # 调用执行开销
+
 
 class ToolTaxGate:
+    """G-STEP 推理时门控。"""
+
     def __init__(self):
-        self._decisions = []
+        self._decisions: list[dict] = []
         self._total = 0
+        self._tools_used = 0
+
     def decide(self, task: str, tool_info: dict = None) -> dict:
+        """决定是否使用工具。
+
+        Args:
+            task: 任务描述
+            tool_info: 工具信息，含 {"cost": float, "gain": float, "protocol": str}
+
+        Returns:
+            {"use_tool": bool, "reason": str, "estimated_cost": float, "estimated_gain": float}
+        """
         self._total += 1
         low = task.lower()
-        is_simple = any(t in low for t in _SIMPLE_TASKS)
-        use_tool = not is_simple
-        reason = "Native CoT sufficient" if is_simple else f"Tool needed for complex task"
-        result = {"use_tool": use_tool, "reason": reason, "estimated_cost": 0.1 if is_simple else 0.5, "estimated_gain": 0.2 if is_simple else 0.8}
+
+        # 计算工具使用总成本
+        prompt_cost = len(task) / 100.0 * 0.01  # 每 100 字符 0.01
+        protocol_cost = _PROTOCOL_OVERHEAD
+        execution_cost = _EXECUTION_GATE
+        if tool_info:
+            execution_cost += tool_info.get("cost", 0.0)
+
+        total_cost = prompt_cost + protocol_cost + execution_cost
+
+        # 计算预期增益
+        if any(t in low for t in _COMPLEX_TASKS):
+            estimated_gain = 0.7  # 复杂任务工具增益大
+            reason = "Complex task — tool likely beneficial"
+            use_tool = True
+        elif any(t in low for t in _MODERATE_TASKS):
+            estimated_gain = 0.5
+            reason = "Moderate task — tool may help"
+            use_tool = True
+        else:
+            estimated_gain = 0.2
+            reason = "Simple task — native CoT sufficient"
+            use_tool = False
+
+        # 工具信息中提供了特定增益时使用
+        if tool_info and "gain" in tool_info:
+            estimated_gain = tool_info["gain"]
+
+        # 最终决策：增益 > 成本
+        if estimated_gain <= total_cost:
+            use_tool = False
+            reason += " (tool tax > gain)"
+
+        result = {
+            "use_tool": use_tool,
+            "reason": reason,
+            "estimated_cost": round(total_cost, 4),
+            "estimated_gain": round(estimated_gain, 4),
+        }
         self._decisions.append(result)
+        if use_tool:
+            self._tools_used += 1
         return result
+
     def get_stats(self) -> dict:
-        return {"total": self._total, "tool_use_rate": round(sum(1 for d in self._decisions if d["use_tool"]) / max(self._total, 1), 4)}
+        return {
+            "total": self._total,
+            "tool_use_rate": round(self._tools_used / max(self._total, 1), 4),
+            "avg_cost": round(sum(d["estimated_cost"] for d in self._decisions) / max(len(self._decisions), 1), 4),
+        }
