@@ -439,34 +439,254 @@ class ContextEngineering:
         return result
 
     def localized_correction(self, query: str, error_context: str,
+                              examples: list[dict] | None = None,
                               max_chars: int = 2000) -> str | None:
-        """L-ICL: 精准局部修正（arXiv 2602.00276）。
+        """L-ICL: Localized In-Context Learning for planners (arXiv 2602.00276).
 
-        2000字符定向修正 > 20000字符完整轨迹检索。
-        当查询失败时，注入目标修正而非完整历史。
+        Iteratively augments instructions with *minimal* ICL examples.
+        Key insight from the paper: 2000-char targeted correction beats
+        20000-char full trajectory retrieval for planner tasks.
+
+        Unlike the Write/Select/Compress/Isolate framework above (which
+        is general-purpose context engineering), this method implements
+        the paper's specific L-ICL algorithm:
+          1. Classify the query → planner domain
+          2. Extract the failure pattern from error_context
+          3. Generate 1-3 minimal ICL examples targeting that pattern
+          4. Assemble a compact correction string (≤ max_chars)
 
         Args:
-            query: 原始查询
-            error_context: 错误/失败上下文描述
-            max_chars: 最大修正文本长度（默认2000，对齐论文）
+            query: The original query that failed.
+            error_context: Description of the error/failure context.
+            examples: Optional list of prior ICL examples for this planner.
+                      Each example dict: {"query": str, "correct_action": str}
+            max_chars: Maximum correction text length (default 2000, per paper).
 
         Returns:
-            修正指令字符串，或None（无不适用修正）
+            A localized correction instruction string, or None if no correction
+            is applicable (empty query or error).
         """
         if not query or not error_context:
             return None
 
-        # 构建精准修正
-        correction = (
-            f"Query: {query[:200]}\n"
-            f"Issue: {error_context[:300]}\n"
-            f"Correction: {error_context[:300]}"
+        # 1. Classify the planner domain
+        domain = self._classify_planner_domain(query)
+
+        # 2. Extract failure pattern from error
+        failure_pattern = self._extract_failure_pattern(error_context)
+
+        # 3. Generate 1-3 minimal ICL examples
+        icl_examples = self._generate_l_icl_examples(
+            query, failure_pattern, domain, examples or []
         )
 
+        # 4. Assemble correction with optional prior examples merged
+        correction_lines = [
+            f"[L-ICL Correction — arXiv 2602.00276]",
+            f"Domain: {domain}",
+            f"Failure pattern: {failure_pattern}",
+            "",
+            "Targeted ICL examples:",
+        ]
+
+        for i, ex in enumerate(icl_examples):
+            correction_lines.append(f"  Example {i + 1}:")
+            correction_lines.append(f"    Query: {ex.get('query', '')[:150]}")
+            correction_lines.append(f"    Correct action: {ex.get('correct_action', '')[:200]}")
+
+        correction_lines.append("")
+        correction_lines.append(f"Instruction augmentation: When planning for [{domain}], "
+                                f"avoid [{failure_pattern}]. Instead apply the {len(icl_examples)} "
+                                f"corrective example(s) above as guardrails.")
+
+        correction = "\n".join(correction_lines)
+
         if len(correction) > max_chars:
-            correction = correction[:max_chars]
+            # Truncate from the middle: keep header and last example
+            header_len = len(
+                f"[L-ICL Correction — arXiv 2602.00276]\n"
+                f"Domain: {domain}\n"
+                f"Failure pattern: {failure_pattern}\n\n"
+            )
+            tail = f"\n\nInstruction augmentation: When planning for [{domain}], avoid [{failure_pattern}]."
+            remaining = max_chars - header_len - len(tail)
+            if remaining > 100:
+                middle = "\n".join(correction_lines[4:-2])
+                if len(middle) > remaining:
+                    middle = middle[: remaining - 20] + "\n  ...(truncated)..."
+                correction = (
+                    correction_lines[0] + "\n" +
+                    correction_lines[1] + "\n" +
+                    correction_lines[2] + "\n\n" +
+                    middle + "\n" +
+                    tail
+                )
+            else:
+                correction = correction[:max_chars]
+
+        # Track stats
+        self._stats["localized_corrections"] = self._stats.get("localized_corrections", 0) + 1
+        self._stats["l_icl_examples_generated"] = (
+            self._stats.get("l_icl_examples_generated", 0) + len(icl_examples)
+        )
 
         return correction
+
+    @staticmethod
+    def _classify_planner_domain(query: str) -> str:
+        """Classify a planner query into a domain for L-ICL targeting."""
+        q = query.lower()
+        if any(w in q for w in ["code", "program", "implement", "script", "function"]):
+            return "code_generation"
+        if any(w in q for w in ["schedule", "timetable", "calendar", "deadline"]):
+            return "scheduling"
+        if any(w in q for w in ["route", "path", "trajectory", "map"]):
+            return "path_planning"
+        if any(w in q for w in ["resource", "budget", "allocate", "assign"]):
+            return "resource_allocation"
+        if any(w in q for w in ["research", "investigate", "search", "find"]):
+            return "research_planning"
+        if any(w in q for w in ["decompose", "break down", "subtask", "phase"]):
+            return "task_decomposition"
+        if any(w in q for w in ["verify", "validate", "test", "check"]):
+            return "verification"
+        if any(w in q for w in ["learn", "study", "curriculum", "teach"]):
+            return "learning_planning"
+        return "general_planning"
+
+    @staticmethod
+    def _extract_failure_pattern(error_context: str) -> str:
+        """Extract a compact failure pattern from error context."""
+        ec = error_context.lower()
+        if "timeout" in ec or "too slow" in ec or "timed out" in ec:
+            return "horizon_overrun"
+        if "invalid" in ec or "malformed" in ec or "syntax" in ec:
+            return "invalid_output_format"
+        if "missing" in ec or "not found" in ec or "nonexistent" in ec:
+            return "missing_prerequisite"
+        if "cycle" in ec or "circular" in ec or "infinite" in ec:
+            return "circular_dependency"
+        if "conflict" in ec or "contradict" in ec or "inconsistent" in ec:
+            return "plan_conflict"
+        if "incomplete" in ec or "partial" in ec or "insufficient" in ec:
+            return "incomplete_coverage"
+        if "redundant" in ec or "duplicate" in ec or "repetitive" in ec:
+            return "redundant_steps"
+        return "general_planning_error"
+
+    def _generate_l_icl_examples(
+        self,
+        query: str,
+        failure_pattern: str,
+        domain: str,
+        prior_examples: list[dict],
+    ) -> list[dict]:
+        """Generate 1-3 minimal ICL examples targeting the failure pattern.
+
+        Produces counter-example + correct-action pairs that a planner
+        can use as localized instruction augmentation. Merges with any
+        prior examples for the same domain/pattern.
+
+        Args:
+            query: The original query.
+            failure_pattern: Extracted failure pattern string.
+            domain: Planner domain classification.
+            prior_examples: Previously stored ICL examples.
+
+        Returns:
+            List of dicts with 'query' and 'correct_action' keys.
+        """
+        examples: list[dict] = []
+
+        # Include matching prior examples first (up to 2)
+        matched_prior = [
+            ex for ex in prior_examples
+            if ex.get("_domain") == domain and ex.get("_pattern") == failure_pattern
+        ]
+        for ex in matched_prior[:2]:
+            examples.append({
+                "query": ex.get("query", query)[:150],
+                "correct_action": ex.get("correct_action", "Review and adjust plan")[:200],
+            })
+
+        # Generate fresh examples based on pattern
+        pattern_examples = {
+            "horizon_overrun": [
+                {
+                    "query": f"Plan execution for {domain} task {' '.join(query.split()[:8])}",
+                    "correct_action": "Decompose into subtasks with per-subtask time budgets. "
+                                      "Use iterative deepening: execute the first subtask, check progress, then expand.",
+                },
+                {
+                    "query": f"Long-horizon {domain} plan with many steps",
+                    "correct_action": "Set intermediate milestones with checkpoint validation. "
+                                      "If a milestone is missed, replan the remaining horizon.",
+                },
+            ],
+            "invalid_output_format": [
+                {
+                    "query": f"Produce structured output for {domain}",
+                    "correct_action": "Define output schema before execution. Validate each field "
+                                      "against the schema after every step. Reject malformed intermediate results.",
+                },
+            ],
+            "missing_prerequisite": [
+                {
+                    "query": f"{domain} plan with dependencies",
+                    "correct_action": "Run a prerequisite scan before planning. "
+                                      "Mark unresolved dependencies as blockers. "
+                                      "Generate alternative paths when a dependency is unsatisfied.",
+                },
+            ],
+            "circular_dependency": [
+                {
+                    "query": f"Interdependent steps in {domain}",
+                    "correct_action": "Topologically sort all steps. Detect cycles with DFS. "
+                                      "If a cycle exists, consolidate the involved steps into a single meta-step.",
+                },
+            ],
+            "plan_conflict": [
+                {
+                    "query": f"Avoiding conflicts in {domain} plan",
+                    "correct_action": "Run pairwise conflict detection across all plan steps. "
+                                      "For each conflict, apply a precedence constraint or merge the conflicting steps.",
+                },
+            ],
+            "incomplete_coverage": [
+                {
+                    "query": f"Full coverage plan for {domain}",
+                    "correct_action": "List all required sub-goals explicitly. "
+                                      "Cross-check each against the original objective. "
+                                      "Flag uncovered objectives for additional step generation.",
+                },
+            ],
+            "redundant_steps": [
+                {
+                    "query": f"Optimizing {domain} plan",
+                    "correct_action": "Deduplicate steps with identical preconditions and effects. "
+                                      "Merge adjacent steps that can be combined. "
+                                      "Remove steps that do not contribute to any sub-goal.",
+                },
+            ],
+            "general_planning_error": [
+                {
+                    "query": f"General {domain} planning",
+                    "correct_action": "Analyze the failed attempt. Identify the earliest step where "
+                                      "the plan diverged from expectations. Generate a revised prefix "
+                                      "from that point forward.",
+                },
+            ],
+        }
+
+        fresh = pattern_examples.get(failure_pattern, pattern_examples["general_planning_error"])
+        needed = min(3 - len(examples), len(fresh))
+        for ex in fresh[:needed]:
+            examples.append({
+                "query": ex["query"][:150],
+                "correct_action": ex["correct_action"][:200],
+            })
+
+        return examples[:3]
 
     def get_stats(self) -> dict:
         return dict(self._stats)
