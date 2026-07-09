@@ -561,6 +561,13 @@ class Omega:
         self.signal_fusion = SignalFusionLayer(self)
         self.signal_fusion.subscribe(self.event_bus)
 
+        # B1: Memory security detectors (paper-based)
+        try:
+            from prometheus_ultra.safety.trigger_detector import TriggerDetector
+            self.trigger_detector = TriggerDetector()
+        except Exception:
+            self.trigger_detector = None
+
         # 知识翻译：监听 knowledge_added → 轻量 fitness 检查
         # _last_kta_fitness: 上次知识翻译时记录的 fitness 值，用于 delta 比较
         self._last_kta_fitness = self._compute_fitness()
@@ -712,6 +719,12 @@ class Omega:
             # Don't block — just log. Blocking would break legitimate uses.
             # But flag for downstream sleeper detection
             self.owner_harm.flag_suspicious(node.id, "trigger_keywords", trigger_hits)
+
+        # Gate 3.7: Sleeper Trigger Detection (B1-1, arXiv 2605.15338)
+        try:
+            self.trigger_detector.scan(content, source=source)
+        except Exception:
+            pass
 
         # Gate 4: VeracityBayesian
         self.veracity.compute_posterior_compat(
@@ -894,7 +907,8 @@ class Omega:
     # ============================================================
     # recall pipeline (6 routes)
     # ============================================================
-    def recall(self, query: str, limit: int = 10, branch: str = "main") -> SearchResults:
+    def recall(self, query: str, limit: int = 10, branch: str = "main",
+               prefer_chunk: bool = False) -> SearchResults:
         start = time.time()
         all_hits: list[SearchHit] = []
         recall_data = {}
@@ -1169,11 +1183,100 @@ class Omega:
             except Exception as e:
                 logger.debug("P3 RSI rule guidance failed: %s", e)
 
+        # B2-1: Verbatim Chunk Joint Storage (arXiv 2601.00821)
+        # Enrich each result with raw_chunk if available, and optionally prefer chunk
+        try:
+            enriched = []
+            for h in unique:
+                node = self.store.read_node(h.node_id)
+                if node and node.raw_chunk:
+                    h.metadata["chunk"] = node.raw_chunk
+                    if prefer_chunk:
+                        h.content = node.raw_chunk
+                enriched.append(h)
+            unique = enriched
+        except Exception as e:
+            logger.debug("Verbatim chunk enrichment failed: %s", e)
+
         self.event_bus.publish({"type": "recall_completed", "query": query, "hits": len(unique), "duration_ms": duration})
         recall_result = SearchResults(hits=unique, total_count=len(unique), query=query, duration_ms=duration, metadata=recall_data)
         # Telemetry: 存储原始返回值
         self._telemetry["recall"] = recall_result
         return recall_result
+
+    # ============================================================
+    # B2-2: PolarMem Tristate Query (arXiv 2602.00415)
+    # ============================================================
+    def _recall_with_trust(self, query: str, limit: int = 10, branch: str = "main",
+                           prefer_chunk: bool = False) -> SearchResults:
+        """Recall with trust-state-aware filtering.
+
+        Uses three-state memory (HAS/NOT_HAS/Uncertain) to annotate or filter results:
+        - trust_state="has": normal results, included with standard confidence.
+        - trust_state="not_has": known-absent; included but with suppressed confidence.
+        - trust_state="uncertain": flagged as unverified.
+
+        Args:
+            query: Search query string.
+            limit: Maximum results to return.
+            branch: Branch to search in.
+            prefer_chunk: If True, use raw_chunk as the main content field.
+
+        Returns:
+            SearchResults with trust-state-annotated hits.
+        """
+        try:
+            results = self.recall(query, limit=limit * 3, branch=branch, prefer_chunk=prefer_chunk)
+        except Exception as e:
+            logger.error("_recall_with_trust: recall failed: %s", e)
+            return SearchResults(hits=[], total_count=0, query=query, metadata={"trust_state_error": str(e)})
+
+        filtered_hits = []
+        trust_metadata = {"has": 0, "not_has": 0, "uncertain": 0}
+
+        try:
+            for hit in results.hits:
+                node = self.store.read_node(hit.node_id)
+                trust_state = "unknown"
+                try:
+                    if node:
+                        trust_state = node.trust_state or "unknown"
+                except Exception:
+                    trust_state = "unknown"
+
+                hit.metadata["trust_state"] = trust_state
+                trust_metadata[trust_state] = trust_metadata.get(trust_state, 0) + 1
+
+                if trust_state == "not_has":
+                    # Known-absent: include but signal low confidence
+                    hit.metadata["suppressed"] = True
+                    hit.score *= 0.3  # Drastically reduce score
+                    hit.metadata["note"] = "known_absent"
+                elif trust_state == "uncertain":
+                    # Uncertain: flag as unverified
+                    hit.metadata["unverified"] = True
+                    hit.score *= 0.7
+                    hit.metadata["note"] = "unverified"
+                # trust_state == "has": no modification needed
+
+                filtered_hits.append(hit)
+
+            filtered_hits.sort(key=lambda h: h.score, reverse=True)
+            filtered_hits = filtered_hits[:limit]
+
+        except Exception as e:
+            logger.error("_recall_with_trust: filtering failed: %s", e)
+            filtered_hits = results.hits[:limit]
+
+        result = SearchResults(
+            hits=filtered_hits,
+            total_count=len(filtered_hits),
+            query=query,
+            duration_ms=results.duration_ms,
+            metadata={"trust_state_counts": trust_metadata, **results.metadata},
+        )
+        self._telemetry["recall_with_trust"] = result
+        return result
 
     # ============================================================
     # evolve pipeline (11 stages — Superpowers enhanced)
