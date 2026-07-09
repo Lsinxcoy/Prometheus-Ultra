@@ -154,6 +154,46 @@ class MemoryStream:
             "avg_importance": self.get_avg_importance(),
         }
 
+    # ── Temporal Weighting + Primacy Bias (B3-4, arXiv 2603.00270) ──────────
+
+    def apply_recency_bias(self, results: list[dict]) -> list[dict]:
+        """Apply recency bias to retrieval results.
+
+        Each result dict should have 'utility' and 'created_at' keys.
+        weight = min(1.0, max(0.1, 1.0 - elapsed_hours * 0.01))
+        final_score = utility * recency
+        Returns results sorted by final_score descending.
+        """
+        now = time.time()
+        for r in results:
+            created = r.get("created_at", now)
+            elapsed_hours = max(0.0, (now - created) / 3600.0)
+            recency = max(0.1, min(1.0, 1.0 - elapsed_hours * 0.01))
+            utility = r.get("utility", 0.5)
+            r["recency_score"] = round(recency, 4)
+            r["final_score"] = round(utility * recency, 4)
+        results.sort(key=lambda x: x["final_score"], reverse=True)
+        return results
+
+    def get_primacy_risk(self, results: list[dict]) -> dict:
+        """Assess primacy bias risk.
+
+        High risk: old AND frequently accessed result dominating top position.
+        """
+        if not results:
+            return {"risk": 0.0, "dominated_by": "", "domination_score": 0.0}
+        top = results[0]
+        now = time.time()
+        created = top.get("created_at", now)
+        age_days = max(0.0, (now - created) / 86400.0)
+        access_count = top.get("access_count", 0)
+        risk = min(1.0, (age_days / 30.0) * min(1.0, access_count / max(access_count, 10)))
+        return {
+            "risk": round(risk, 4),
+            "dominated_by": top.get("id", top.get("node_id", "")),
+            "domination_score": round(top.get("utility", 0.5) * risk, 4),
+        }
+
 
 # ---------------------------------------------------------------------------
 # B3-4: Temporal weighting + conflict detection
