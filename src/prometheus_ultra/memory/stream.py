@@ -21,6 +21,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -152,3 +153,165 @@ class MemoryStream:
             "total_events": sum(self._type_counts.values()),
             "avg_importance": self.get_avg_importance(),
         }
+
+
+# ---------------------------------------------------------------------------
+# B3-4: Temporal weighting + conflict detection
+# Based on arXiv 2603.00270 (Transformers Remember First, Forget Last):
+#   Proactive interference dominates universally (Cohen's d=1.73, p<0.0001).
+#   56% of errors come from primacy bias — architectural, not fixable by scaling.
+# And arXiv 2606.08457 (Consistency Illusion):
+#   Multi-agent debate creates consistency illusion: same answer, different paths.
+# ---------------------------------------------------------------------------
+
+
+def apply_temporal_weights(results: list[dict]) -> list[dict]:
+    """Apply recency-bias temporal weights to a list of result dicts.
+
+    Each result dict must have a ``ts`` key (Unix timestamp, float).
+    Weight formula::
+
+        weight = min(1.0, max(0.1, 1.0 - elapsed_hours * 0.01))
+
+    where ``elapsed_hours`` is the wall-clock time between *now* and
+    ``result["ts"]``.
+
+    Parameters
+    ----------
+    results : list[dict]
+        Each dict must contain at least ``"ts": float``.
+
+    Returns
+    -------
+    list[dict]
+        Results sorted by recency weight (highest first), each annotated with
+        a ``"temporal_weight"`` key.
+    """
+    if not results:
+        return []
+
+    now = time.time()
+    weighted = []
+    for r in results:
+        ts = r.get("ts", now)
+        elapsed_hours = max(0.0, (now - ts) / 3600.0)
+        weight = min(1.0, max(0.1, 1.0 - elapsed_hours * 0.01))
+        weighted.append({**r, "temporal_weight": round(weight, 4)})
+
+    weighted.sort(key=lambda x: x["temporal_weight"], reverse=True)
+    return weighted
+
+
+def detect_conflicts(results: list[dict]) -> list[dict]:
+    """Detect logical contradictions between result dicts.
+
+    Checks three types of conflict:
+      1. **Opposing numerical values** — e.g. "70%" vs "30%"
+      2. **Direct factual contradictions** — e.g. "is true" vs "is false"
+      3. **Temporal inconsistencies** — e.g. "before X" vs "after X"
+
+    Parameters
+    ----------
+    results : list[dict]
+        Each dict must contain at least ``"content": str``. A ``"source_id"``
+        or ``"id"`` key is used for conflict tracking; falls back to the
+        result index as a string.
+
+    Returns
+    -------
+    list[dict]
+        Each conflict dict has the shape::
+
+            {"type": str, "source_ids": list[str], "confidence": float}
+    """
+    conflicts: list[dict] = []
+
+    if len(results) < 2:
+        return conflicts
+
+    _extract_id = lambda r, i: str(r.get("source_id") or r.get("id") or str(i))
+
+    # --- 1. Opposing numerical values ----------------------------------------
+    _NUM_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+    for i in range(len(results)):
+        for j in range(i + 1, len(results)):
+            content_a = results[i].get("content", "")
+            content_b = results[j].get("content", "")
+            nums_a = _NUM_PATTERN.findall(content_a)
+            nums_b = _NUM_PATTERN.findall(content_b)
+            if nums_a and nums_b:
+                for na_s in nums_a:
+                    na = float(na_s)
+                    for nb_s in nums_b:
+                        nb = float(nb_s)
+                        if 0.0 <= na <= 100.0 and 0.0 <= nb <= 100.0:
+                            ratio = max(na, nb) / max(min(na, nb), 1e-9)
+                            if ratio >= 2.0:
+                                conflicts.append({
+                                    "type": "numerical_opposition",
+                                    "source_ids": [
+                                        _extract_id(results[i], i),
+                                        _extract_id(results[j], j),
+                                    ],
+                                    "confidence": min(1.0, (ratio - 1.0) / 5.0),
+                                })
+
+    # --- 2. Direct factual contradictions ------------------------------------
+    _FACT_PAIRS = [
+        (" is true", " is false"),
+        (" is correct", " is incorrect"),
+        (" is valid", " is invalid"),
+        ("supports", "contradicts"),
+        (" agrees", " disagrees"),
+        (" confirmed", " disproved"),
+        (" confirmed", " refuted"),
+        (" proven", " disproven"),
+    ]
+    for i in range(len(results)):
+        for j in range(i + 1, len(results)):
+            content_a = results[i].get("content", "").lower()
+            content_b = results[j].get("content", "").lower()
+            for pos, neg in _FACT_PAIRS:
+                pos_hit_a = pos in content_a
+                neg_hit_b = neg in content_b
+                pos_hit_b = pos in content_b
+                neg_hit_a = neg in content_a
+                if (pos_hit_a and neg_hit_b) or (pos_hit_b and neg_hit_a):
+                    conflicts.append({
+                        "type": "factual_contradiction",
+                        "source_ids": [
+                            _extract_id(results[i], i),
+                            _extract_id(results[j], j),
+                        ],
+                        "confidence": 0.85,
+                    })
+                    break  # one conflict per pair is enough
+
+    # --- 3. Temporal inconsistencies -----------------------------------------
+    _TEMP_PATTERNS = [
+        (r"\bbefore\s+(\w+)", r"\bafter\s+(\w+)"),
+        (r"\bearlier\s+than\s+(\w+)", r"\blater\s+than\s+(\w+)"),
+        (r"\bpreceding\s+(\w+)", r"\bfollowing\s+(\w+)"),
+    ]
+    for i in range(len(results)):
+        for j in range(i + 1, len(results)):
+            content_a = results[i].get("content", "").lower()
+            content_b = results[j].get("content", "").lower()
+            for before_pat, after_pat in _TEMP_PATTERNS:
+                before_a = set(re.findall(before_pat, content_a))
+                after_b = set(re.findall(after_pat, content_b))
+                before_b = set(re.findall(before_pat, content_b))
+                after_a = set(re.findall(after_pat, content_a))
+                shared = (before_a & after_b) | (before_b & after_a)
+                if shared:
+                    conflicts.append({
+                        "type": "temporal_inconsistency",
+                        "source_ids": [
+                            _extract_id(results[i], i),
+                            _extract_id(results[j], j),
+                        ],
+                        "confidence": 0.75,
+                    })
+                    break
+
+    return conflicts
