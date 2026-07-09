@@ -114,7 +114,9 @@ CREATE TABLE IF NOT EXISTS nodes (
     updated_at REAL NOT NULL,
     tx_from REAL DEFAULT 0.0,
     tx_to REAL DEFAULT 0.0,
-    version INTEGER DEFAULT 1
+    version INTEGER DEFAULT 1,
+    raw_chunk TEXT DEFAULT '',
+    trust_state TEXT DEFAULT 'unknown'
 );
 
 -- Edge relationships
@@ -336,7 +338,22 @@ class MinervaStore:
         """Create all tables and indexes."""
         assert self._conn is not None
         self._conn.executescript(SCHEMA_SQL)
+        # Migrate existing tables to add missing columns for B2-1/B2-2
+        self._migrate_add_column("nodes", "raw_chunk", "TEXT DEFAULT ''")
+        self._migrate_add_column("nodes", "trust_state", "TEXT DEFAULT 'unknown'")
         self._conn.commit()
+
+    def _migrate_add_column(self, table: str, column: str, col_def: str) -> None:
+        """Add a column if it doesn't already exist (safe migration)."""
+        assert self._conn is not None
+        try:
+            pragma = self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+            col_names = [r[1] for r in pragma]
+            if column not in col_names:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
+                logger.info("Migrated %s: added column %s", table, column)
+        except Exception as e:
+            logger.warning("Migration of %s.%s skipped: %s", table, column, e)
 
     def _ensure_main_branch(self) -> None:
         """Ensure the 'main' branch exists."""
@@ -1028,6 +1045,14 @@ class MinervaStore:
         Returns:
             Node instance.
         """
+        try:
+            raw_chunk = row["raw_chunk"] if "raw_chunk" in row.keys() else ""
+        except Exception:
+            raw_chunk = ""
+        try:
+            trust_state = row["trust_state"] if "trust_state" in row.keys() else "unknown"
+        except Exception:
+            trust_state = "unknown"
         return Node(
             id=row["id"],
             type=NodeType(row["type"]),
@@ -1045,4 +1070,6 @@ class MinervaStore:
             tx_from=row["tx_from"],
             tx_to=row["tx_to"],
             version=row["version"],
+            raw_chunk=raw_chunk,
+            trust_state=trust_state,
         )
