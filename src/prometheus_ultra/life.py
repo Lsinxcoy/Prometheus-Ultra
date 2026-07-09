@@ -35,6 +35,8 @@ from prometheus_ultra.memory.disposition import DispositionLearner
 from prometheus_ultra.memory.hebbian import HebbianMemory
 from prometheus_ultra.memory.hierarchical import HierarchicalMemory  # HORMA层级记忆
 from prometheus_ultra.memory.stream import MemoryStream
+from prometheus_ultra.memory.dual_storage import DualPathwayMemory
+from prometheus_ultra.memory.mempo import MemPO
 from prometheus_ultra.memory.bridge import KnowledgeBridge
 
 # Lifecycle
@@ -64,6 +66,7 @@ from prometheus_ultra.evolution.evolution_engine import EvolutionEngine
 from prometheus_ultra.evolution.pass_k import PassKConsistency
 from prometheus_ultra.evolution.strategies import MultiStrategyScheduler
 from prometheus_ultra.evolution.evolution_quality_gates import EvolutionQualityGates
+from prometheus_ultra.evolution.rimrule import RIMRULE
 from prometheus_ultra.safety.trace_engine import TraceEngine
 
 # Safety
@@ -74,6 +77,8 @@ from prometheus_ultra.safety.equilibrium_guard import EquilibriumGuard
 from prometheus_ultra.safety.rl_pathology import RLPathologyDetector
 from prometheus_ultra.safety.circuit_breaker import CircuitBreaker
 from prometheus_ultra.safety.drift_detector import DriftDetector
+from prometheus_ultra.safety.constraint_drift import ConstraintDriftDetector
+from prometheus_ultra.safety.owner_harm import OwnerHarmTrustBoundary
 from prometheus_ultra.safety.zscore import ZScoreAnomaly
 from prometheus_ultra.safety.trend import TrendPredictor
 from prometheus_ultra.safety.self_healing import SelfHealingEngine
@@ -263,6 +268,8 @@ class Omega:
         self.trajectory = TrajectoryStore()
         self.disposition = DispositionLearner()
         self.stream = MemoryStream()
+        self.dual_storage = DualPathwayMemory()
+        self.mempo = MemPO()
         self.bridge = KnowledgeBridge()
 
         # ===== Lifecycle (12) =====
@@ -304,6 +311,8 @@ class Omega:
         self.rl_pathology = RLPathologyDetector()
         self.circuit_breaker = CircuitBreaker()
         self.drift_detector = DriftDetector()
+        self.constraint_drift = ConstraintDriftDetector()
+        self.owner_harm = OwnerHarmTrustBoundary()
         self.zscore = ZScoreAnomaly()
         self.trend = TrendPredictor()
         self.self_healing = SelfHealingEngine()
@@ -449,6 +458,7 @@ class Omega:
         self.oep_defense = OEPDefense()
         self.progressive_checkpoints = ProgressiveCheckpoints()
         self.evo_quality_gates = EvolutionQualityGates()
+        self.rimrule = RIMRULE()
         self.utility_decay = UtilityDecay()
         self.tool_drift = ToolDriftDetector()
         self.deep_retrofit_6 = DeepRetrofit6()
@@ -595,15 +605,18 @@ class Omega:
         # 收集 remember 管道数据
         remember_data = {}
 
-        # WAL: write-ahead log entry with LCRP validation
-        wal_result = self.wal.write("remember", status="started", pending=["create_node"])
-        if wal_result < 0:
+        # WAL: write-ahead log entry with LCRP validation + Atomic Transaction
+        tx_id = self.wal.begin_tx()
+        wal_result = self.wal.write_dict("remember", status="started", pending=["create_node"], tx_id=tx_id)
+        if not wal_result.get("valid", False):
+            self.wal.rollback_tx(tx_id)
             logger.warning("Censor WAL rejected: %s (LCRP invalid)", content[:50])
             return ""
 
         # Gate 0: InputGuardrail
         gr = self.input_guardrail.check(content)
         if not gr.passed:
+            self.wal.rollback_tx(tx_id)
             self.failure_log.log("remember", "input_guardrail_blocked", {"reason": gr.reason})
             return ""
 
@@ -613,6 +626,7 @@ class Omega:
             trust_score=0.8, delta=0.1, drift_score=0.05, risk_level=0.2,
         )
         if not all(r.passed for r in chain_results):
+            self.wal.rollback_tx(tx_id)
             self.failure_log.log("remember", "five_gate_chain_blocked",
                                {"gate": chain_results[-1].gate_name})
             return ""
@@ -621,18 +635,21 @@ class Omega:
         oep_alert = self.oep_defense.check(content, source="user_input",
                                            transferable=True, similar_count=0)
         if oep_alert.severity == "critical":
+            self.wal.rollback_tx(tx_id)
             self.failure_log.log("remember", "oep_blocked", {"severity": oep_alert.severity})
             return ""
 
         # Gate 1: DopamineWriteGate
         gate = self.dopamine.evaluate(utility=utility, surprise=surprise)
         if gate.decision == "reject":
+            self.wal.rollback_tx(tx_id)
             self.failure_log.log("remember", "dopamine_rejected", {"score": gate.score})
             return ""
 
         # Create node
         node = Node(id=generate_uuidv7(), type=NodeType.FACT, content=content,
-                     tags=tags, utility=utility, surprise=surprise, branch=branch)
+                     tags=tags, utility=utility, surprise=surprise, branch=branch,
+                     raw_chunk=content, trust_state="has")  # Verbatim chunk + PolarMem HAS
 
         # EVAF: surprise-valence consolidation check
         evaf_result = self.evaf_consolidation.evaluate(node.id, surprise, utility)
@@ -642,6 +659,7 @@ class Omega:
         # Gate 2: FiveGates
         cascade = self.five_gates.evaluate(node, {"current_node_count": self.store.get_node_count()})
         if not cascade.passed:
+            self.wal.rollback_tx(tx_id)
             self.failure_log.log("remember", "five_gates_blocked", {"node_count": self.store.get_node_count()})
             return ""
 
@@ -652,8 +670,12 @@ class Omega:
         })
         blocking = [v for v in violations if not v.passed and "S" in v.gate_name]
         if blocking:
+            self.wal.rollback_tx(tx_id)
             self.failure_log.log("remember", "constitution_violation", {"violations": [v.gate_name for v in blocking]})
             return ""
+
+        # Feed all violations into constraint drift detector
+        self.constraint_drift.observe([v for v in violations if not v.passed])
 
         # Gate 3: InstinctsRegistry
         instinct_results = self.instincts.evaluate_all({
@@ -661,6 +683,7 @@ class Omega:
         })
         for triggered in instinct_results:
             if triggered.get("result", {}).get("action") == "block":
+                self.wal.rollback_tx(tx_id)
                 self.failure_log.log("remember", "instinct_blocked", {})
                 return ""
 
@@ -687,6 +710,13 @@ class Omega:
 
         # Store
         self.store.create_node(node)
+        self.wal.commit_tx(tx_id)
+
+        # MemPO: observe node creation
+        self.mempo.observe_access(node.id)
+
+        # Owner-Harm: register node ownership
+        self.owner_harm.register_owner(node.id, branch)
 
         # HORMA: 层级记忆索引（按tags构建路径）
         if tags:
@@ -754,6 +784,7 @@ class Omega:
         # Side effects
         self.trajectory.record("remember", [{"node_id": node.id, "utility": utility}])
         self.stream.add("remember", content[:200], importance=utility)
+        self.dual_storage.store_verbatim(node.id, content, utility, tags)
         self.disposition.learn("remember_utility", utility)
         self.bridge.bridge(content, "memory", relationship="stored")
         self.vector_clock.increment()
@@ -931,6 +962,18 @@ class Omega:
             except Exception as e:
                 logger.debug("L-ICL correction failed: %s", e)
 
+        # Route 8: DualStorage — verbatim + compressed combined retrieval
+        if hasattr(self, 'dual_storage'):
+            try:
+                ds_results = self.dual_storage.retrieve(query, limit=max(3, limit // 3))
+                for h in ds_results.get("verbatim", []):
+                    all_hits.append(SearchHit(node_id=f"ds_v_{h.get('node_id', '')[:8]}", score=0.6, content=h.get("content", "")))
+                for h in ds_results.get("compressed", []):
+                    all_hits.append(SearchHit(node_id=f"ds_c_{id(h)}", score=0.5, content=h.get("content", "")))
+                recall_data['dual_storage_primary'] = ds_results.get("primary_mode", "unknown")
+            except Exception as e:
+                logger.debug("DualStorage retrieval failed: %s", e)
+
         # Deduplicate + sort (cap scores to [0,1] for cross-route consistency)
         seen = set()
         unique = []
@@ -941,6 +984,21 @@ class Omega:
                 unique.append(h)
         unique.sort(key=lambda h: h.score, reverse=True)
         unique = unique[:limit]
+
+        # Owner-Harm: filter results the requester can access
+        if hasattr(self, 'owner_harm'):
+            try:
+                requester = branch or "system"
+                filtered = []
+                for h in unique:
+                    access = self.owner_harm.check_access(h.node_id, requester)
+                    if access["allowed"]:
+                        filtered.append(h)
+                    else:
+                        recall_data['owner_harm_filtered_count'] = recall_data.get('owner_harm_filtered_count', 0) + 1
+                unique = filtered or unique  # If all filtered out, keep originals as fallback
+            except Exception as e:
+                logger.debug("Owner-Harm check failed: %s", e)
 
         duration = (time.time() - start) * 1000
 
@@ -1076,6 +1134,29 @@ class Omega:
             except Exception:
                 pass
         unique.sort(key=lambda h: h.score, reverse=True)
+
+        # MemPO: update utilities for recalled nodes
+        if hasattr(self, 'mempo'):
+            try:
+                node_ids = [h.node_id for h in unique if hasattr(h, 'node_id')]
+                used = [True] * len(node_ids)
+                self.mempo.batch_update_utilities(node_ids, used)
+                recall_data['mempo_avg_utility'] = sum(
+                    self.mempo.get_utility(nid) for nid in node_ids
+                ) / max(len(node_ids), 1)
+            except Exception as e:
+                logger.debug("MemPO update failed: %s", e)
+
+        # P3 RSI: RIMRULLE→MemPO rule-guided utility boost on recall
+        if hasattr(self, 'rimrule') and hasattr(self, 'mempo') and hasattr(self.mempo, 'apply_rule_guidance'):
+            try:
+                high_conf_rules = self.rimrule.get_rules(sort_by="confidence", limit=3)
+                for rule in high_conf_rules:
+                    if rule.get("confidence", 0) > 0.5:
+                        related_ids = [h.node_id for h in unique[:5] if hasattr(h, 'node_id')]
+                        self.mempo.apply_rule_guidance(rule, related_ids)
+            except Exception as e:
+                logger.debug("P3 RSI rule guidance failed: %s", e)
 
         self.event_bus.publish({"type": "recall_completed", "query": query, "hits": len(unique), "duration_ms": duration})
         recall_result = SearchResults(hits=unique, total_count=len(unique), query=query, duration_ms=duration, metadata=recall_data)
@@ -1224,6 +1305,22 @@ class Omega:
                 test_cases=[{"input": context}, {"input": "test"}]
             )
             self.marginal.record(harness_score, "harness_evolution", context)
+
+        # RIMRULE: observe evolution context for pattern extraction
+        self.rimrule.add_observation({"condition": str(context)[:100], "outcome": "evolve", "utility": 0.5})
+        # P3 RSI: MemPO→RIMRULLE observation weighting
+        mempo_weights: dict[str, float] = {}
+        if hasattr(self, 'mempo') and hasattr(self.mempo, 'get_utility_for_condition'):
+            try:
+                cond_str = str(context)[:100]
+                u = self.mempo.get_utility_for_condition(cond_str)
+                mempo_weights[cond_str] = u
+            except Exception as e:
+                logger.debug("P3 RSI mempo weight failed: %s", e)
+        rules = self.rimrule.extract_rules(observation_weights=mempo_weights if mempo_weights else None)
+        if rules:
+            evolution_data['rimrule_rules_count'] = len(rules)
+            evolution_data['rimrule_top_score'] = rules[0].get("mdl_score", 0) if rules else 0
 
         # Step 6: Context Engineering — manage evolve context
         self.context_engineering.write("evolve_%s" % context, [
@@ -2257,6 +2354,26 @@ class Omega:
         compressed = self.three_layer_compression.compress(report_text)
         self.zscore.detect()
         self.drift_detector.observe_behavioral(0.5)
+        drift_alerts = self.constraint_drift.detect()
+        if drift_alerts:
+            logger.warning("Constraint drift detected: %s", drift_alerts)
+        maintain_data['constraint_drift_alerts'] = drift_alerts
+
+        # RIMRULE: extract rule report for maintain
+        if hasattr(self, 'rimrule'):
+            try:
+                rule_report = self.rimrule.get_rules(sort_by="confidence", limit=5)
+                maintain_data['rimrule_rules'] = rule_report
+                # P3 RSI: feed high-confidence RIMRULLE rules back into MemPO condition utilities
+                if hasattr(self, 'mempo') and hasattr(self.mempo, 'apply_rule_guidance'):
+                    for rule in rule_report:
+                        if rule.get("confidence", 0) > 0.6:
+                            cond = rule.get("condition", "")
+                            if cond:
+                                self.mempo.apply_rule_guidance(rule, [])
+            except Exception as e:
+                logger.debug("RIMRULE report failed: %s", e)
+
         self.cache.delete("old_key")
 
         # Forgetting: get expired nodes for cleanup

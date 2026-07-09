@@ -45,6 +45,7 @@ import logging
 import threading
 import time
 from typing import Any, Dict, Optional
+from prometheus_ultra.safety.rubas_evaluator import RUBASEvaluator
 
 import uvicorn
 from fastapi import FastAPI, HTTPException

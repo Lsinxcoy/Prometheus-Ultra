@@ -310,6 +310,9 @@ class Node:
     tx_from: float = 0.0
     tx_to: float = 0.0
     version: int = 1
+    # Verbatim Chunks 2601.00821 / PolarMem 2602.00415 / Grokers 2606.00050
+    raw_chunk: str = ""  # Original verbatim chunk (Verbatim Chunks 2601.00821)
+    trust_state: str = "unknown"  # PolarMem 2602.00415 tristate: "has"/"not_has"/"uncertain"
 
     def __post_init__(self):
         if not self.id:

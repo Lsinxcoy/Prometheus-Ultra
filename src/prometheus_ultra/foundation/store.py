@@ -389,14 +389,15 @@ class MinervaStore:
         with self._lock:
             try:
                 self._conn.execute(
-                    """INSERT INTO nodes (id, type, content, utility, surprise, tags,
-                       branch, source, confidence, tier, access_count,
-                       created_at, updated_at, tx_from, tx_to, version)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    "INSERT INTO nodes (id, type, content, utility, surprise, tags,"
+                    " branch, source, confidence, tier, access_count,"
+                    " created_at, updated_at, tx_from, tx_to, version, raw_chunk, trust_state)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (node.id, node.type.value, node.content, node.utility, node.surprise,
                      json.dumps(node.tags), node.branch, node.source.value, node.confidence,
                      node.tier.value, node.access_count, node.created_at, node.updated_at,
-                     node.tx_from, node.tx_to, node.version),
+                     node.tx_from, node.tx_to, node.version,
+                     node.raw_chunk, node.trust_state),
                 )
 
                 # Update FTS index
