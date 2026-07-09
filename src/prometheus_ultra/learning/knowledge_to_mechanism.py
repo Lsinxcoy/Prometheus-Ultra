@@ -35,7 +35,7 @@ class KnowledgeToMechanism:
     def __init__(self):
         self._applied_hashes: set[int] = set()  # 内容哈希去重，防止重复应用
         # 三级信任标注追踪
-        self._trust_refs: dict[str, dict] = {}  # node_id -> {ref_count, sources, applications, last_promote}
+        self._trust_refs: dict[str, dict] = {}  # node_id -> {ref_count, sources, application_count, level}
 
     def get_trust_level(self, node_id: str) -> str:
         """获取指定节点的信任等级。"""
