@@ -35,11 +35,19 @@ class AcademicSearcher:
         self._initialized = False
 
     def _ensure_initialized(self):
-        """初始化所有学术论文 searcher 实例。"""
+        """初始化所有学术论文 searcher 实例。
+
+        过滤 paper_search_mcp 在 import 时泄漏到 stdout 的协程 repr。
+        """
         if self._initialized:
             return
 
         _setup_proxy()
+
+        # 临时过滤 stdout 中的协程 repr（paper_search_mcp import 时触发 async main()）
+        import io, sys as _sys
+        _orig_stdout = _sys.stdout
+        _sys.stdout = io.StringIO()
 
         try:
             from paper_search_mcp.academic_platforms.arxiv import ArxivSearcher
@@ -87,6 +95,8 @@ class AcademicSearcher:
             logger.warning("AcademicSearcher unavailable: %s (pip install paper-search-mcp)", e)
         except Exception as e:
             logger.warning("AcademicSearcher init failed: %s", e)
+        finally:
+            _sys.stdout = _orig_stdout
 
     def search(self, query: str, max_results: int = 5, source: str = "all",
                year: str = None) -> list[dict]:
