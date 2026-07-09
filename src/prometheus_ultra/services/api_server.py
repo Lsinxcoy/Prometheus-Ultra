@@ -45,7 +45,13 @@ import logging
 import threading
 import time
 from typing import Any, Dict, Optional
-from prometheus_ultra.safety.rubas_evaluator import RUBASEvaluator
+
+# Optional: rubas_evaluator was removed, use rubric instead
+try:
+    from prometheus_ultra.safety.rubric import RubricScorer
+    _HAS_RUBRIC = True
+except ImportError:
+    _HAS_RUBRIC = False
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
