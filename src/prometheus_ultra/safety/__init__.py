@@ -10,3 +10,4 @@ from prometheus_ultra.safety.trend import TrendDetector, TrendPredictor
 from prometheus_ultra.safety.self_healing import SelfHealingEngine
 from prometheus_ultra.safety.owner_harm import OwnerHarmTrustBoundary
 from prometheus_ultra.safety.rubric import RubricScorer, RubricResult
+from prometheus_ultra.safety.compliance_scorer import ComplianceScorer, ComplianceResult
