@@ -151,5 +151,39 @@ class WeibullForgetting:
             "scale": self._scale,
         }
 
+    # ── FSFM Safety-Triggered + Adaptive Reinforcement (B4-3, arXiv 2604.20300) ──
+
+    def safety_trigger_forget(self, node_ids: list[str], reason: str = "security") -> dict:
+        """安全触发遗忘：立即将指定节点遗忘（retention 设为 0）。
+
+        FSFM 安全触发分类：检测到恶意/敏感内容时自动删除。
+        """
+        count = 0
+        for nid in node_ids:
+            if nid in self._retentions:
+                self._retentions[nid] = 0.0
+                count += 1
+        logger.warning("FSFM safety-triggered forget: %d nodes (%s)", count, reason)
+        return {"forgotten": count, "reason": reason}
+
+    def adaptive_reinforce(self, node_id: str, boost: float = 0.2) -> float:
+        """自适应增强：对频繁访问的记忆增加 retention。
+
+        FSFM 自适应增强分类：频繁访问的记忆获得增强，不常访问的衰减更快。
+        """
+        current = self._retentions.get(node_id, 0.0)
+        new_ret = min(1.0, current + boost)
+        self._retentions[node_id] = new_ret
+        return new_ret
+
+    def get_safety_candidates(self, threshold: float = 0.8) -> list[dict]:
+        """获取低 retention 节点作为安全遗忘候选。"""
+        candidates = []
+        for nid, r in self._retentions.items():
+            if r < threshold:
+                candidates.append({"node_id": nid, "retention": r})
+        candidates.sort(key=lambda x: x["retention"])
+        return candidates[:100]
+
 
 import time
