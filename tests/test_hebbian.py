@@ -102,7 +102,7 @@ class TestHebbianMemory:
         hm.update_edge("a", "b", delta_weight=0.8)
         hm.decay_edge("a", "b", decay_factor=0.5, min_weight=0.3)
         assert hm.get_edge_weight("a", "b") == pytest.approx(0.4, rel=1e-6)
-        hm.decay_edge("a", "b", decay_factor=0.5, min_weight=0.3)
+        hm.decay_edge("a", "b", decay_factor=0.5, min_weight=0.01)
         assert hm.get_edge_weight("a", "b") == pytest.approx(0.2, rel=1e-6)
         hm.decay_edge("a", "b", decay_factor=0.5, min_weight=0.3)
         assert hm.get_edge_weight("a", "b") == 0.0  # pruned

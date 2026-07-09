@@ -8,5 +8,6 @@ from prometheus_ultra.memory.shmr import SHMRGenerator
 from prometheus_ultra.memory.trajectory import TrajectoryStore
 from prometheus_ultra.memory.disposition import DispositionLearner
 from prometheus_ultra.memory.stream import MemoryStream
+from prometheus_ultra.memory.dual_storage import DualPathwayMemory
 from prometheus_ultra.memory.bridge import KnowledgeBridge
 from prometheus_ultra.memory.hebbian import HebbianMemory

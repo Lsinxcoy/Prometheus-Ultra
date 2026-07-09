@@ -203,7 +203,12 @@ class LuckyPassDetector:
         is_ideal = trajectory_success and fired_count == 0
 
         # --- Compute probabilities (normalised heuristic counts) ---
-        lucky_prob = fired_count / 3.0
+        # Empty/invalid trajectories (no paths, no steps) should have zero probability
+        if path_count == 0 and total_steps == 0:
+            lucky_prob = 0.0
+            is_lucky = False
+        else:
+            lucky_prob = fired_count / 3.0
         ideal_prob = 1.0 - lucky_prob if trajectory_success else 0.0
 
         analysis = LuckyPassAnalysis(

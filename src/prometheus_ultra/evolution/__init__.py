@@ -17,3 +17,4 @@ from prometheus_ultra.evolution.memento import MementoEvolution
 from prometheus_ultra.evolution.openspace import OpenSpaceEvolution
 from prometheus_ultra.evolution.tool_fitness import ToolFitness, ToolCallRecord, ToolProfile, ToolFitnessScore, ToolChainAnalysis
 from prometheus_ultra.evolution.evolution_quality_gates import EvolutionQualityGates, QualityReport, GateResult
+from prometheus_ultra.evolution.rimrule import RIMRULE

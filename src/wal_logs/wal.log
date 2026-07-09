@@ -289,3 +289,170 @@
 {"lsn": 140, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 255}}, "timestamp": 1783521604.1558106, "confirmed": false}
 {"lsn": 141, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 255}}, "timestamp": 1783521605.8329034, "confirmed": false}
 {"lsn": 142, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783522375.5535626, "confirmed": false}
+{"lsn": 143, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783524252.4356287, "confirmed": false}
+{"lsn": 144, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525260.7065156, "confirmed": false}
+{"lsn": 145, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525260.7141368, "confirmed": false}
+{"lsn": 146, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525260.7212014, "confirmed": false}
+{"lsn": 147, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525263.2490969, "confirmed": false}
+{"lsn": 148, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525263.2700567, "confirmed": false}
+{"lsn": 149, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525263.2779558, "confirmed": false}
+{"lsn": 150, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525266.1000042, "confirmed": false}
+{"lsn": 151, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525266.1101394, "confirmed": false}
+{"lsn": 152, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525266.117534, "confirmed": false}
+{"lsn": 153, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525269.2383778, "confirmed": false}
+{"lsn": 154, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525269.245513, "confirmed": false}
+{"lsn": 155, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525269.2524834, "confirmed": false}
+{"lsn": 156, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525269.2602968, "confirmed": false}
+{"lsn": 157, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525269.266922, "confirmed": false}
+{"lsn": 158, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783525296.2586498, "confirmed": false}
+{"lsn": 159, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 271}}, "timestamp": 1783525298.262584, "confirmed": false}
+{"lsn": 160, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 271}}, "timestamp": 1783525299.9066324, "confirmed": false}
+{"lsn": 161, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783527234.9276187, "confirmed": false}
+{"lsn": 162, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783527436.0010142, "confirmed": false}
+{"lsn": 163, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783528216.426492, "confirmed": false}
+{"lsn": 164, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783528635.7668748, "confirmed": false}
+{"lsn": 165, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529036.3830755, "confirmed": false}
+{"lsn": 166, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529036.4018867, "confirmed": false}
+{"lsn": 167, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529036.4165454, "confirmed": false}
+{"lsn": 168, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529039.6942282, "confirmed": false}
+{"lsn": 169, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529039.71242, "confirmed": false}
+{"lsn": 170, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529039.7262352, "confirmed": false}
+{"lsn": 171, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529042.7325385, "confirmed": false}
+{"lsn": 172, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529042.748217, "confirmed": false}
+{"lsn": 173, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529042.7615166, "confirmed": false}
+{"lsn": 174, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529046.079399, "confirmed": false}
+{"lsn": 175, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529046.1039877, "confirmed": false}
+{"lsn": 176, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529046.115122, "confirmed": false}
+{"lsn": 177, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529046.1349032, "confirmed": false}
+{"lsn": 178, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529046.14288, "confirmed": false}
+{"lsn": 179, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783529076.8621855, "confirmed": false}
+{"lsn": 180, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 290}}, "timestamp": 1783529078.9408724, "confirmed": false}
+{"lsn": 181, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 290}}, "timestamp": 1783529080.6866536, "confirmed": false}
+{"lsn": 182, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783530722.6937573, "confirmed": false}
+{"lsn": 183, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783530965.8834076, "confirmed": false}
+{"lsn": 184, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783531037.169188, "confirmed": false}
+{"lsn": 185, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783531574.931489, "confirmed": false}
+{"lsn": 186, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783532136.9183102, "confirmed": false}
+{"lsn": 187, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783532940.5579705, "confirmed": false}
+{"lsn": 188, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783532940.5743086, "confirmed": false}
+{"lsn": 189, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783532941.7038631, "confirmed": false}
+{"lsn": 190, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783532941.722613, "confirmed": false}
+{"lsn": 191, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783532941.7308116, "confirmed": false}
+{"lsn": 192, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783532942.8753953, "confirmed": false}
+{"lsn": 193, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783532943.8422494, "confirmed": false}
+{"lsn": 194, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533005.0299077, "confirmed": false}
+{"lsn": 195, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533005.0535343, "confirmed": false}
+{"lsn": 196, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533016.3557959, "confirmed": false}
+{"lsn": 197, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533016.3733284, "confirmed": false}
+{"lsn": 198, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533016.3848271, "confirmed": false}
+{"lsn": 199, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533023.7731338, "confirmed": false}
+{"lsn": 200, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533023.7793446, "confirmed": false}
+{"lsn": 201, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533023.786411, "confirmed": false}
+{"lsn": 202, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533028.988967, "confirmed": false}
+{"lsn": 203, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533028.9964106, "confirmed": false}
+{"lsn": 204, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533029.0040123, "confirmed": false}
+{"lsn": 205, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533029.0268059, "confirmed": false}
+{"lsn": 206, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533029.0355666, "confirmed": false}
+{"lsn": 207, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533076.4909174, "confirmed": false}
+{"lsn": 208, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 316}}, "timestamp": 1783533077.1610522, "confirmed": false}
+{"lsn": 209, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 316}}, "timestamp": 1783533077.459334, "confirmed": false}
+{"lsn": 210, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783533116.192771, "confirmed": false}
+{"lsn": 211, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783534221.809443, "confirmed": false}
+{"lsn": 212, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783534539.3920922, "confirmed": false}
+{"lsn": 213, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783534774.4969406, "confirmed": false}
+{"lsn": 214, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783534969.8003278, "confirmed": false}
+{"lsn": 215, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783535040.023705, "confirmed": false}
+{"lsn": 216, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783535293.9217553, "confirmed": false}
+{"lsn": 217, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783535629.066488, "confirmed": false}
+{"lsn": 218, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783535788.0215995, "confirmed": false}
+{"lsn": 219, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783536077.744275, "confirmed": false}
+{"lsn": 220, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783536843.594302, "confirmed": false}
+{"lsn": 221, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783536843.6031325, "confirmed": false}
+{"lsn": 222, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783536843.611601, "confirmed": false}
+{"lsn": 223, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783536849.031394, "confirmed": false}
+{"lsn": 224, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783536849.038943, "confirmed": false}
+{"lsn": 225, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783536849.0602598, "confirmed": false}
+{"lsn": 226, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 332}}, "timestamp": 1783536877.3662615, "confirmed": false}
+{"lsn": 227, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 332}}, "timestamp": 1783536879.0873804, "confirmed": false}
+{"lsn": 228, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783536972.0688553, "confirmed": false}
+{"lsn": 229, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537515.548547, "confirmed": false}
+{"lsn": 230, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537515.5790544, "confirmed": false}
+{"lsn": 231, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537515.605578, "confirmed": false}
+{"lsn": 232, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537515.6190407, "confirmed": false}
+{"lsn": 233, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537515.6322746, "confirmed": false}
+{"lsn": 234, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537515.646395, "confirmed": false}
+{"lsn": 235, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537515.6579506, "confirmed": false}
+{"lsn": 236, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537515.6682005, "confirmed": false}
+{"lsn": 237, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537516.8063872, "confirmed": false}
+{"lsn": 238, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537516.8167255, "confirmed": false}
+{"lsn": 239, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537516.82449, "confirmed": false}
+{"lsn": 240, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 344}}, "timestamp": 1783537517.3722103, "confirmed": false}
+{"lsn": 241, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 344}}, "timestamp": 1783537517.4079177, "confirmed": false}
+{"lsn": 242, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537517.461402, "confirmed": false}
+{"lsn": 243, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783537597.4535537, "confirmed": false}
+{"lsn": 244, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538659.7225723, "confirmed": false}
+{"lsn": 245, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538659.7447708, "confirmed": false}
+{"lsn": 246, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538659.7665694, "confirmed": false}
+{"lsn": 247, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538659.7785316, "confirmed": false}
+{"lsn": 248, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538659.790515, "confirmed": false}
+{"lsn": 249, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538659.8100863, "confirmed": false}
+{"lsn": 250, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538659.8218253, "confirmed": false}
+{"lsn": 251, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538659.833641, "confirmed": false}
+{"lsn": 252, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538660.9716046, "confirmed": false}
+{"lsn": 253, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538660.9792109, "confirmed": false}
+{"lsn": 254, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538660.988693, "confirmed": false}
+{"lsn": 255, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 357}}, "timestamp": 1783538661.6095328, "confirmed": false}
+{"lsn": 256, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 357}}, "timestamp": 1783538661.6353393, "confirmed": false}
+{"lsn": 257, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538661.667692, "confirmed": false}
+{"lsn": 258, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783538762.4404023, "confirmed": false}
+{"lsn": 259, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783540722.9279058, "confirmed": false}
+{"lsn": 260, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 360}}, "timestamp": 1783540729.0842783, "confirmed": false}
+{"lsn": 261, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 360}}, "timestamp": 1783540733.7849271, "confirmed": false}
+{"lsn": 262, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544403.2261631, "confirmed": false}
+{"lsn": 263, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544405.8425357, "confirmed": false}
+{"lsn": 264, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544405.8516035, "confirmed": false}
+{"lsn": 265, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544405.8605206, "confirmed": false}
+{"lsn": 266, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544408.6346443, "confirmed": false}
+{"lsn": 267, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544408.6447494, "confirmed": false}
+{"lsn": 268, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544408.6535244, "confirmed": false}
+{"lsn": 269, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544411.313571, "confirmed": false}
+{"lsn": 270, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544411.3230343, "confirmed": false}
+{"lsn": 271, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544411.3305688, "confirmed": false}
+{"lsn": 272, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544411.3389337, "confirmed": false}
+{"lsn": 273, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544411.3631995, "confirmed": false}
+{"lsn": 274, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 372}}, "timestamp": 1783544461.6897802, "confirmed": false}
+{"lsn": 275, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 372}}, "timestamp": 1783544463.368495, "confirmed": false}
+{"lsn": 276, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 372}}, "timestamp": 1783544499.387533, "confirmed": false}
+{"lsn": 277, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783544502.9568548, "confirmed": false}
+{"lsn": 278, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548173.7759056, "confirmed": false}
+{"lsn": 279, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548176.4044662, "confirmed": false}
+{"lsn": 280, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548176.414378, "confirmed": false}
+{"lsn": 281, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548176.4225688, "confirmed": false}
+{"lsn": 282, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548179.3778489, "confirmed": false}
+{"lsn": 283, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548179.3873572, "confirmed": false}
+{"lsn": 284, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548179.3962305, "confirmed": false}
+{"lsn": 285, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548182.3539286, "confirmed": false}
+{"lsn": 286, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548182.3634694, "confirmed": false}
+{"lsn": 287, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548182.386385, "confirmed": false}
+{"lsn": 288, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548182.3949463, "confirmed": false}
+{"lsn": 289, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548182.4039114, "confirmed": false}
+{"lsn": 290, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783548221.41184, "confirmed": false}
+{"lsn": 291, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 386}}, "timestamp": 1783548223.914407, "confirmed": false}
+{"lsn": 292, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 386}}, "timestamp": 1783548225.6656003, "confirmed": false}
+{"lsn": 293, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783551892.9858978, "confirmed": false}
+{"lsn": 294, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783551895.555119, "confirmed": false}
+{"lsn": 295, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783551895.5640569, "confirmed": false}
+{"lsn": 296, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783551895.573322, "confirmed": false}
+{"lsn": 297, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783551898.3723812, "confirmed": false}
+{"lsn": 298, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783551898.3815162, "confirmed": false}
+{"lsn": 299, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783551898.389979, "confirmed": false}
+{"lsn": 300, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783551945.7297025, "confirmed": false}
+{"lsn": 301, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 394}}, "timestamp": 1783551948.2221603, "confirmed": false}
+{"lsn": 302, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 394}}, "timestamp": 1783551949.9567852, "confirmed": false}
+{"lsn": 303, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783554916.609961, "confirmed": false}
+{"lsn": 304, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783555728.5093396, "confirmed": false}
+{"lsn": 305, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 396}}, "timestamp": 1783555731.0417187, "confirmed": false}
+{"lsn": 306, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 396}}, "timestamp": 1783555732.739716, "confirmed": false}
+{"lsn": 307, "op_type": "remember", "key": "", "value": null, "metadata": {"status": "started", "pending": ["create_node"]}, "timestamp": 1783559448.667733, "confirmed": false}
+{"lsn": 308, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 397}}, "timestamp": 1783559451.5485663, "confirmed": false}
+{"lsn": 309, "op_type": "maintain", "key": "", "value": null, "metadata": {"status": "completed", "payload": {"node_count": 397}}, "timestamp": 1783559453.3239322, "confirmed": false}
