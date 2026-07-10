@@ -480,7 +480,7 @@ class Omega:
         # Exploration tracking
         self.explorer_state = ExplorerState()
         self.curiosity_autofill = CuriosityAutoFill(self.curiosity_queue)
-        self.exploration_quota = ExplorationQuota(max_daily=200, revision_after=10, weekly_max=3000)
+        self.exploration_quota = ExplorationQuota(max_daily=99999999, revision_after=10, weekly_max=99999999)
         self._scans: list[dict] = []
 
         # Sub-agent & rule management
