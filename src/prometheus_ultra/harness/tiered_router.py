@@ -479,7 +479,7 @@ class CapabilityTracker:
         }
 
     def reset(self) -> None:
-        """Reset all tracking data to initial state."""
+        """重置所有跟踪数据到初始状态。"""
         self._records.clear()
         self._tier_stats = {
             t: {"attempts": 0, "successes": 0, "failures": 0,
@@ -499,14 +499,160 @@ class CapabilityTracker:
         """Restore tracker state from a dict produced by to_dict()."""
         tracker = cls()
         tracker._records = list(data.get("records", []))
-        for tier, stats in data.get("tier_stats", {}).items():
-            if tier in tracker._tier_stats:
-                tracker._tier_stats[tier] = dict(stats)
+        tier_data = data.get("tier_stats", {})
+        for t, s in tier_data.items():
+            if t in tracker._tier_stats:
+                tracker._tier_stats[t] = dict(s)
         return tracker
+# ======================================================================
+# AgentFloor Benchmark Evaluator (arXiv 2605.00334)
+# 30-task/6-tier evaluation protocol matching the paper
+# ======================================================================
+
+class AgentFloorEvaluator:
+    """AgentFloor benchmark: 30-task/6-tier evaluation of model capabilities.
+
+    Implements the evaluation protocol from arXiv 2605.00334:
+    - 6 capability tiers (0-5), 5 tasks per tier = 30 tasks total
+    - Each task is classified to the correct tier by TaskClassifier
+    - Evaluates model success rate per tier and overall capability ladder
+
+    Usage:
+        evaluator = AgentFloorEvaluator()
+        result = evaluator.evaluate_all(model_evaluator_fn)
+        # model_evaluator_fn(task, tier) -> {"success": bool, "output": str}
+        print(result["tier_results"])
+        print(f"Overall: {result['overall_success_rate']:.1%}")
+    """
+
+    TIER_TASKS = {
+        "instruction_following": [
+            "Say hello", "What time is it?", "Convert 25°C to Fahrenheit",
+            "Format this list into bullet points", "Reverse the string 'hello'",
+        ],
+        "simple_tool": [
+            "Search for the capital of France",
+            "Calculate the square root of 144",
+            "Look up the definition of photosynthesis",
+            "Find today's date",
+            "Translate 'good morning' to Spanish",
+        ],
+        "multi_tool": [
+            "Search for weather in Tokyo then convert to Celsius",
+            "Cross-reference population density with area size for 3 countries",
+            "Analyze the sentiment of a text and summarize key themes",
+            "Compare economic growth rates of US, China, and India",
+            "Fetch stock prices and calculate the moving average",
+        ],
+        "coordination": [
+            "Coordinate data collection from 3 web sources and merge results",
+            "Delegate sub-tasks to specialized agents and synthesize findings",
+            "Assign research topics to 2 experts and aggregate their reports",
+            "Hand off intermediate results between search and analysis tools",
+            "Synchronize parallel data streams and detect inconsistencies",
+        ],
+        "planning": [
+            "Plan a 3-phase software release with dependencies and milestones",
+            "Design a system architecture with load balancing and failover",
+            "Create a roadmap for migrating from monolith to microservices",
+            "Schedule a deployment pipeline with CI/CD stages and rollback plan",
+            "Develop a testing strategy with unit, integration, and e2e phases",
+        ],
+        "long_horizon": [
+            "Monitor system health metrics over 24 hours and alert on anomalies",
+            "Track codebase quality metrics over 2 weeks and suggest improvements",
+            "Evolve a prompt strategy gradually based on user interaction feedback",
+            "Maintain persistent context for a multi-day research project",
+            "Accumulate and refine knowledge from daily user interactions",
+        ],
+    }
+
+    def __init__(self):
+        self._classifier = TaskClassifier()
+        self._tier_results: dict[str, dict] = {}
+        self._eval_log: list[dict] = []
+
+    def get_benchmark_tasks(self) -> dict[str, list[str]]:
+        """Return the 30-task AgentFloor benchmark suite."""
+        return dict(self.TIER_TASKS)
+
+    def evaluate(self, tier: str, evaluator_fn: callable) -> dict:
+        """Evaluate a model on one tier (5 tasks).
+
+        Args:
+            tier: Tier name from TIER_TASKS.
+            evaluator_fn: callable(task: str, tier: str) -> {"success": bool}
+
+        Returns:
+            {"tier": str, "score": float (0-5), "tasks": list}
+        """
+        tasks = self.TIER_TASKS.get(tier, [])
+        results = []
+        successes = 0
+        for task in tasks:
+            try:
+                output = evaluator_fn(task, tier)
+                success = output.get("success", False)
+            except Exception:
+                logger.warning("TieredRouter: task evaluation failed, marking as unsuccessful")
+                success = False
+            results.append({"task": task, "success": success})
+            if success:
+                successes += 1
+
+        tier_result = {
+            "tier": tier,
+            "score": successes,
+            "max_score": len(tasks),
+            "success_rate": successes / max(len(tasks), 1),
+            "tasks": results,
+        }
+        self._tier_results[tier] = tier_result
+        self._eval_log.append(tier_result)
+        return tier_result
+
+    def evaluate_all(self, evaluator_fn: callable) -> dict:
+        """Run the full 30-task AgentFloor benchmark.
+
+        Args:
+            evaluator_fn: callable(task, tier) -> {"success": bool, ...}
+
+        Returns:
+            {"tier_results": {tier: dict}, "overall_success_rate": float,
+             "capability_ladder": int, "total_tasks": int, "total_successes": int}
+        """
+        self._tier_results = {}
+        for tier in _TIER_ORDER:
+            self.evaluate(tier, evaluator_fn)
+
+        total = sum(r["max_score"] for r in self._tier_results.values())
+        successes = sum(r["score"] for r in self._tier_results.values())
+
+        # Capability ladder: highest tier with >= 60% success rate
+        ladder = -1
+        for i, tier in enumerate(_TIER_ORDER):
+            tr = self._tier_results.get(tier, {})
+            if tr.get("success_rate", 0) >= 0.6:
+                ladder = i
+
+        return {
+            "tier_results": dict(self._tier_results),
+            "overall_success_rate": successes / max(total, 1),
+            "capability_ladder": ladder,
+            "capability_tier": _TIER_ORDER[ladder] if ladder >= 0 else "none",
+            "total_tasks": total,
+            "total_successes": successes,
+        }
+
+    def get_stats(self) -> dict:
+        return {
+            "tiers_evaluated": len(self._tier_results),
+            "last_eval_log": self._eval_log[-3:] if self._eval_log else [],
+        }
 
 
 # ======================================================================
-# TieredRouter — 扩展版，集成 6 层级路由 + 能力跟踪
+# TieredRouter — 扩展版，集成 6 层级路由 + 能力跟踪 + AgentFloor 评测
 # ======================================================================
 
 class TieredRouter:

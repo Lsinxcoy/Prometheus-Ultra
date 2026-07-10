@@ -356,6 +356,7 @@ class DAGScheduler:
         # 否则保持不变
 
         self._parallelism_trend = self._max_concurrent - old_parallelism
+        self._last_adjust_time = time.time()
 
         return self._max_concurrent
 

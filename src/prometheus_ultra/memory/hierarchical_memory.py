@@ -315,6 +315,62 @@ class HierarchicalMemory:
             return 1.0
         return shared / max_depth
 
+    # ──────────────────────────────────────────────────
+    # HORMA §3.4: RC-Token Optimization
+    # ──────────────────────────────────────────────────
+
+    def compute_rc_token_saving(self, flat_content: str | None = None) -> dict[str, Any]:
+        """Compute RC-token savings from hierarchical vs flat representation.
+
+        HORMA §3.4: Hierarchical paths use dramatically fewer tokens than
+        flat text.  The RC (Representation Cost) ratio measures token usage
+        of the hierarchical representation relative to an equivalent flat
+        representation.
+
+        Args:
+            flat_content: Optional flat text baseline.  If None, reconstruct
+                          a flat representation from all stored nodes.
+
+        Returns:
+            {"hierarchical_tokens": int, "flat_tokens": int,
+             "rc_ratio": float, "savings_pct": float,
+             "savings_per_node": float}
+        """
+        with self._lock:
+            total_nodes = len(self._nodes)
+            if total_nodes == 0:
+                return {"hierarchical_tokens": 0, "flat_tokens": 0,
+                        "rc_ratio": 1.0, "savings_pct": 0.0, "savings_per_node": 0.0}
+
+            # Hierarchical token cost: sum of all paths + content lengths
+            hierarchical_tokens = 0
+            for nid, info in self._nodes.items():
+                path_cost = len(info["path"].split("/"))
+                content_cost = len(info["content"].split())
+                hierarchical_tokens += path_cost + content_cost
+
+            # Flat token cost: reconstruct a flat representation
+            flat_tokens = 0
+            if flat_content:
+                flat_tokens = len(flat_content.split())
+            else:
+                # Simulate flat representation: all content prefixed with
+                # a generic tag (no hierarchy benefit)
+                for nid, info in self._nodes.items():
+                    flat_tokens += len(info["content"].split()) + 2  # +2 for generic tag
+
+            rc_ratio = hierarchical_tokens / max(flat_tokens, 1)
+            savings_pct = max(0.0, (1.0 - rc_ratio) * 100.0)
+
+            return {
+                "hierarchical_tokens": hierarchical_tokens,
+                "flat_tokens": flat_tokens,
+                "rc_ratio": round(rc_ratio, 4),
+                "savings_pct": round(savings_pct, 2),
+                "savings_per_node": round(savings_pct / max(total_nodes, 1), 4),
+                "total_nodes": total_nodes,
+            }
+
     def get_stats(self) -> dict[str, Any]:
         """Return summary statistics."""
         with self._lock:

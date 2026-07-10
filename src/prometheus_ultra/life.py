@@ -573,10 +573,11 @@ class Omega:
             from prometheus_ultra.safety.trigger_detector import TriggerDetector
             self.trigger_detector = TriggerDetector()
         except Exception:
+            logger.warning("Failed to load TriggerDetector, running without detector")
             self.trigger_detector = None
 
         # 知识翻译：监听 knowledge_added → 轻量 fitness 检查
-        # _last_kta_fitness: 上次知识翻译时记录的 fitness 值，用于 delta 比较
+        # _last_kta_fitness
         self._last_kta_fitness = self._compute_fitness()
         def _on_knowledge_added(event: dict):
             try:
@@ -1268,6 +1269,7 @@ class Omega:
                     if node:
                         trust_state = node.trust_state or "unknown"
                 except Exception:
+                    logger.warning("Failed to read trust_state from node, defaulting to unknown")
                     trust_state = "unknown"
 
                 hit.metadata["trust_state"] = trust_state
@@ -1430,6 +1432,7 @@ class Omega:
             self.ucb1.update(strategy, fitness_reward)
             best_arm = self.ucb1.get_best_arm()
         except Exception:
+            logger.warning("UCB1 strategy selection failed, falling back to default")
             strategy = "default"
 
         # Step 4.6: FGG — 门控结果用于阻断违规进化
@@ -1886,6 +1889,7 @@ class Omega:
             a2a_task = self.a2a_basic.delegate_task(f"Learn about {query}", required=[], requester="omega")
             a2a_stats = self.a2a_basic.get_stats()
         except Exception:
+            logger.warning("A2A delegate_task failed, running without A2A stats")
             a2a_stats = {"status": "a2a_unavailable"}
 
         # SubAgentContract: 为委托学习创建合约
@@ -1899,6 +1903,7 @@ class Omega:
                 )
                 contract_id = contract.get("id", "") if isinstance(contract, dict) else str(getattr(contract, 'id', ''))
             except Exception:
+                logger.warning("Contract creation failed for a2a task")
                 contract_id = "contract_creation_failed"
 
         # Anti-pattern 2: 只列不深 → short titles with no content = shallow scan
@@ -2199,6 +2204,7 @@ class Omega:
                 "approved": review_result.approved,
             }
         except Exception:
+            logger.warning("Reflect review failed, marking as unavailable")
             reflect_review["status"] = "review_unavailable"
 
         # Disposition: get behavioral prediction
@@ -2394,6 +2400,7 @@ class Omega:
                     dream_data["evolve_delta"] = raw_delta
                     logger.info("Dream triggered by evolve (delta=%.4f)", raw_delta)
         except Exception:
+            logger.warning("Dream signal processing failed, continuing without it")
             pass
 
         dream_result = self.dream.run_cycle(branch=branch)
@@ -2533,6 +2540,7 @@ class Omega:
                     maintain_data["upstream_patterns"] = patterns
                     logger.info("Maintain triggered by dream (%d patterns)", patterns)
         except Exception:
+            logger.warning("Maintain signal processing failed, continuing without it")
             pass
 
         self.bank.run_migration()
@@ -2555,6 +2563,7 @@ class Omega:
                 baseline_prob=0.3,
             )
         except Exception:
+            logger.warning("Dopamine reward recording failed, continuing")
             pass
         self.circuit_breaker.record_success()
         self.self_healing.heal({"bank_count": self.bank.count()})
@@ -2629,6 +2638,7 @@ class Omega:
         try:
             maintain_server_status = self.server.status()
         except Exception:
+            logger.warning("Server status check failed, returning default")
             maintain_server_status = {"status": "server_check_failed"}
 
         # MemoryDataAdapter: 运行快速基准评估
@@ -2637,9 +2647,10 @@ class Omega:
             benchmark = self.memory_data_adapter.evaluate("memoryagentbench", "ultra")
             maintain_benchmark = benchmark.metrics if hasattr(benchmark, 'metrics') else {}
         except Exception:
+            logger.warning("Memory benchmark failed, marking as unavailable")
             maintain_benchmark = {"status": "benchmark_unavailable"}
 
-        # MiMo: ThreeLayerCompression — compress maintain report
+        # 信息茧房
         report_text = "Maintain completed: %d nodes, %d edges, %d expired rules" % (
             self.store.get_node_count(), self.store.get_edge_count(), len(expired))
         compressed = self.three_layer_compression.compress(report_text)
@@ -2846,10 +2857,12 @@ class Omega:
                 vals = list(all_avgs.values())
                 maintain_data['aging_compression_var'] = sum((v - sum(vals)/len(vals))**2 for v in vals) / len(vals)
         except Exception:
+            logger.warning("Aging compression variance calculation failed")
             pass
         try:
             maintain_data['tracelift_inert'] = sum(1 for k in self._learned_config if not k.startswith('_'))
         except Exception:
+            logger.warning("Tracelift inert calculation failed")
             pass
 
         # 链分析：激活历史链的总结（signal_fusion.chain_analysis）
@@ -2979,6 +2992,7 @@ class Omega:
                 return "degraded"
             return "healthy"
         except Exception:
+            logger.warning("Health status check failed, returning unknown")
             return "unknown"
 
     def close(self):

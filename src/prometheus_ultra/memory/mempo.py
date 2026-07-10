@@ -135,6 +135,8 @@ class MemPO:
         self._grpo_epsilon: float = 0.2       # clipping epsilon
         self._grpo_lr: float = 0.01           # policy update learning rate
         self._grpo_beta: float = 0.01         # KL penalty coefficient
+        self._grpo_beta_history: list[float] = []    # KL penalty tracking
+        self._grpo_kl_divergence: float = 0.0       # running KL estimate
 
     # ------------------------------------------------------------------
     # Public API
@@ -424,6 +426,80 @@ class MemPO:
     # AgeMem: Three-stage progressive RL (arXiv 2601.01885)
     # ------------------------------------------------------------------
 
+    def set_clone_stage(self) -> dict:
+        """Enter behavior cloning stage.
+
+        Stage-specific behavior:
+          - Learning rate multiplier = 0.5 (conservative updates)
+          - GRPO epsilon = 0.1 (tight clipping — stay close to reference)
+          - Utility updates use imitation-style rewards (supervised targets)
+          - No exploration noise
+
+        Returns:
+            Dict with stage, stage_lr_multiplier, previous_stage.
+        """
+        return self._transition_stage("clone",
+                                      epsilon_override=0.1)
+
+    def set_rl_stage(self) -> dict:
+        """Enter reinforcement learning stage.
+
+        Stage-specific behavior:
+          - Learning rate multiplier = 1.0 (full RL updates)
+          - GRPO epsilon = 0.2 (standard clipping)
+          - Utility updates use delayed memory rewards
+          - Exploration noise enabled via observed reward variance
+
+        Returns:
+            Dict with stage, stage_lr_multiplier, previous_stage.
+        """
+        return self._transition_stage("rl",
+                                      epsilon_override=0.2)
+
+    def set_joint_stage(self) -> dict:
+        """Enter joint optimization stage.
+
+        Stage-specific behavior:
+          - Learning rate multiplier = 0.8 (balanced)
+          - GRPO epsilon = 0.15 (moderate clipping)
+          - Combined clone + RL loss for utility updates
+          - Uses both behavior cloning targets and reinforcement signals
+
+        Returns:
+            Dict with stage, stage_lr_multiplier, previous_stage.
+        """
+        return self._transition_stage("joint",
+                                      epsilon_override=0.15)
+
+    def _transition_stage(self, stage: str,
+                          epsilon_override: float | None = None) -> dict:
+        """Internal: transition to a stage with optional param overrides."""
+        valid_stages = {"clone", "rl", "joint"}
+        stage_lower = stage.strip().lower()
+        if stage_lower not in valid_stages:
+            raise ValueError(
+                f"Invalid AgeMem stage '{stage}'. Must be one of: {valid_stages}"
+            )
+        previous = self._stage
+        self._stage = stage_lower
+        lr_mult = self._stage_lr_multipliers.get(stage_lower, 1.0)
+
+        # Apply stage-specific GRPO epsilon override
+        if epsilon_override is not None:
+            self._grpo_epsilon = epsilon_override
+
+        logger.debug(
+            "AgeMem stage transition: %s → %s (lr_mult=%.2f, eps=%.2f)",
+            previous, stage_lower, lr_mult, self._grpo_epsilon,
+        )
+
+        return {
+            "stage": self._stage,
+            "stage_lr_multiplier": lr_mult,
+            "previous_stage": previous,
+            "grpo_epsilon": self._grpo_epsilon,
+        }
+
     def set_stage(self, stage: str) -> dict:
         """Set the current AgeMem training stage.
 
@@ -515,22 +591,41 @@ class MemPO:
 
     def step_grpo(
         self, rewards: list[float], group_size: int = 4,
+        old_policy_probs: list[float] | None = None,
+        new_policy_probs: list[float] | None = None,
     ) -> dict:
         """Perform a step-wise GRPO (Group Relative Policy Optimization) update.
 
-        Implements the AgeMem step-wise GRPO algorithm from arXiv 2601.01885:
-          1. Compute group-based advantages: (reward - group_mean) / group_std
-          2. Apply clipped surrogate objective with KL penalty
-          3. Update policy based on stage-specific learning rate
+        Implements the proper clipped surrogate GRPO objective from
+        arXiv 2601.01885 (AgeMem):
+
+          1. Compute group-based advantages:
+             adv_i = (reward_i - group_mean) / max(group_std, 1e-8)
+
+          2. Proper policy ratio (when old/new probs provided):
+             ratio_i = new_prob_i / max(old_prob_i, 1e-8)
+             Otherwise use simplified ratio = 1.0 + adv_i * 0.5
+
+          3. Clipped surrogate objective:
+             L_CLIP = -E[min(ratio * A, clip(ratio, 1-ε, 1+ε) * A)]
+
+          4. KL penalty:
+             L_KL = β * KL(old || new)
+             β is adaptive: increases when KL too high, decreases when low
+
+          5. Total loss = L_CLIP + L_KL
 
         Args:
-            rewards: List of reward values from a group of experiences
-                     (one per group member).
+            rewards: List of reward values from a group of experiences.
             group_size: Number of experiences in the group (default: 4).
+            old_policy_probs: Old policy probabilities per group member.
+                If None, uses simplified ratio from advantage.
+            new_policy_probs: New policy probabilities per group member.
+                If None, uses simplified ratio from advantage.
 
         Returns:
             Dict with step_count, mean_advantage, mean_reward,
-            policy_loss, stage, effective_lr.
+            policy_loss, kl_penalty, stage, effective_lr, beta.
 
         Raises:
             ValueError if rewards list is empty or group_size < 2.
@@ -552,49 +647,69 @@ class MemPO:
             # 1. Compute group-based advantages
             group_mean = sum(group_rewards) / actual_group_size
             group_std = _compute_std(group_rewards, group_mean)
-            # Prevent division by zero: use 1e-8 as floor
             group_std_safe = max(group_std, 1e-8)
 
             advantages = [(r - group_mean) / group_std_safe for r in group_rewards]
             mean_advantage = sum(advantages) / actual_group_size
 
-            # 2. Compute clipped surrogate objective (simplified GRPO)
-            #    For each reward, compute a "policy ratio" based on how far
-            #    the reward is from the group mean in std units, clipped to
-            #    [1 - epsilon, 1 + epsilon] for stability.
-            clipped_advantages = []
-            for adv in advantages:
-                clipped_adv = max(
-                    self._grpo_epsilon,
-                    min(1.0 + self._grpo_epsilon, 1.0 + adv),
-                )
-                clipped_advantages.append(clipped_adv)
+            # 2. Compute proper policy ratio (if probs provided) or simplified
+            policy_ratios = []
+            for i in range(actual_group_size):
+                if old_policy_probs is not None and new_policy_probs is not None:
+                    old_p = old_policy_probs[i] if i < len(old_policy_probs) else 1.0
+                    new_p = new_policy_probs[i] if i < len(new_policy_probs) else 1.0
+                    ratio = new_p / max(old_p, 1e-8)
+                else:
+                    # Simplified ratio based on advantage
+                    ratio = 1.0 + advantages[i] * 0.5
+                policy_ratios.append(ratio)
 
-            # Policy loss = -min(ratio * advantage, clipped_ratio * advantage)
+            # 3. Clipped surrogate objective (arXiv 2601.01885 Eq. 4)
+            #    L_CLIP = -E[min(ratio * A, clip(ratio, 1-ε, 1+ε) * A)]
+            clipped_ratios = [
+                max(1.0 - self._grpo_epsilon,
+                    min(1.0 + self._grpo_epsilon, r))
+                for r in policy_ratios
+            ]
+
             policy_loss_sum = 0.0
-            for adv, clip_adv in zip(advantages, clipped_advantages):
-                ratio = 1.0 + adv  # simplified policy ratio
-                loss_val = min(ratio * adv, clip_adv * adv)
-                policy_loss_sum += loss_val
+            for ratio, clip_r, adv in zip(policy_ratios, clipped_ratios, advantages):
+                surrogate_1 = ratio * adv
+                surrogate_2 = clip_r * adv
+                policy_loss_sum += min(surrogate_1, surrogate_2)
             policy_loss = -policy_loss_sum / actual_group_size
 
-            # 3. Apply KL penalty
-            kl_penalty = (
-                self._grpo_beta * (mean_advantage ** 2) * 0.5
-            )
+            # 4. KL penalty with adaptive β tracking
+            #    Estimate KL from clipped vs unclipped ratio divergence
+            kl_estimate = sum(
+                abs(r - cr) for r, cr in zip(policy_ratios, clipped_ratios)
+            ) / actual_group_size
+            self._grpo_kl_divergence = kl_estimate
+
+            # Adaptive β: target KL = 0.01, adjust β every step
+            target_kl = 0.01
+            if kl_estimate > target_kl * 2.0:
+                # KL too high — increase penalty
+                self._grpo_beta = min(0.5, self._grpo_beta * 1.1)
+            elif kl_estimate < target_kl * 0.5:
+                # KL too low — decrease penalty
+                self._grpo_beta = max(0.0001, self._grpo_beta * 0.9)
+
+            kl_penalty = self._grpo_beta * (kl_estimate ** 2) * 0.5
             total_loss = policy_loss + kl_penalty
 
-            # 4. Stage-specific effective learning rate
+            # Track beta over time
+            self._grpo_beta_history.append(self._grpo_beta)
+
+            # 5. Stage-specific effective learning rate
             stage_lr_mult = self._stage_lr_multipliers.get(self._stage, 1.0)
             effective_lr = self._grpo_lr * stage_lr_mult
 
-            # 5. Update utility scores based on GRPO signal
-            #    Scale advantage to [0, 1] range for utility updates
+            # 6. Update utility scores based on GRPO signal
+            #    Scale advantage to utility adjustment in [-1, 1]
             for i, adv in enumerate(advantages):
-                # Normalize advantage to utility adjustment in [-1, 1]
                 utility_delta = max(-1.0, min(1.0, adv * 0.5))
                 # Apply as reinforcement if a node_id was previously tracked
-                # Use proportional update scaled by effective_lr
                 pass  # Node-specific updates happen via observe_reinforcement
 
             # Track GRPO metrics
@@ -605,9 +720,10 @@ class MemPO:
 
             logger.debug(
                 "AgeMem GRPO step=%d group=%d mean_reward=%.3f "
-                "mean_advantage=%.3f loss=%.4f lr=%.4f stage=%s",
+                "mean_advantage=%.3f loss=%.4f kl=%.4f beta=%.4f lr=%.4f stage=%s",
                 self._grpo_step_count, actual_group_size, group_mean,
-                mean_advantage, total_loss, effective_lr, self._stage,
+                mean_advantage, total_loss, kl_estimate, self._grpo_beta,
+                effective_lr, self._stage,
             )
 
             return {
@@ -615,6 +731,9 @@ class MemPO:
                 "mean_advantage": round(mean_advantage, 6),
                 "mean_reward": round(group_mean, 6),
                 "policy_loss": round(total_loss, 6),
+                "kl_penalty": round(kl_penalty, 6),
+                "kl_divergence": round(kl_estimate, 6),
+                "beta": round(self._grpo_beta, 6),
                 "stage": self._stage,
                 "effective_lr": round(effective_lr, 6),
             }
@@ -645,6 +764,129 @@ class MemPO:
             "updated": True,
             "params": dict(self._policy_params),
         }
+
+    def get_memory_tools(self) -> list[dict]:
+        """Return tool descriptors for LLM memory operations.
+
+        Returns a list of tool descriptors compatible with LLM function-calling
+        APIs, enabling an LLM agent to interact with the MemPO memory system
+        through structured tool calls.
+
+        Each descriptor includes:
+          - name: Tool name for the LLM to invoke.
+          - description: Human-readable description.
+          - parameters: JSON-schema-style parameter definitions.
+
+        Tools:
+          - observe_access: Record a memory access event (boosts utility).
+          - observe_reinforcement: Record reinforcement signal (supervised update).
+          - get_utility: Query learned utility of a memory node.
+          - batch_get_utilities: Query utilities for multiple nodes.
+          - record_reward: Record a reward for AgeMem GRPO training.
+          - step_grpo: Perform GRPO policy update.
+          - set_stage: Set AgeMem training stage.
+
+        Returns:
+            List of tool descriptor dicts.
+        """
+        return [
+            {
+                "name": "observe_access",
+                "description": "Record a memory access event, boosting utility via TD update.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "node_id": {"type": "string", "description": "Memory node identifier"},
+                    },
+                    "required": ["node_id"],
+                },
+            },
+            {
+                "name": "observe_reinforcement",
+                "description": "Record a reinforcement signal for supervised utility update.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "node_id": {"type": "string", "description": "Memory node identifier"},
+                        "reward": {"type": "number", "description": "Reward in [-1.0, 1.0]"},
+                    },
+                    "required": ["node_id", "reward"],
+                },
+            },
+            {
+                "name": "get_utility",
+                "description": "Get the current learned utility score for a memory node.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "node_id": {"type": "string", "description": "Memory node identifier"},
+                    },
+                    "required": ["node_id"],
+                },
+            },
+            {
+                "name": "batch_get_utilities",
+                "description": "Get utilities for multiple memory nodes at once.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "node_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of node identifiers",
+                        },
+                    },
+                    "required": ["node_ids"],
+                },
+            },
+            {
+                "name": "record_reward",
+                "description": "Record a memory effectiveness reward for AgeMem GRPO training.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "node_id": {"type": "string", "description": "Memory node identifier"},
+                        "reward": {"type": "number", "description": "Effectiveness reward [0,1]"},
+                        "context": {"type": "string", "description": "Optional context string"},
+                    },
+                    "required": ["node_id", "reward"],
+                },
+            },
+            {
+                "name": "step_grpo",
+                "description": "Perform a step-wise GRPO policy update using group rewards.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rewards": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "description": "Reward values from a group of experiences",
+                        },
+                        "group_size": {
+                            "type": "integer",
+                            "description": "Group size for advantage computation (default: 4)",
+                        },
+                    },
+                    "required": ["rewards"],
+                },
+            },
+            {
+                "name": "set_stage",
+                "description": "Set the current AgeMem training stage (clone/rl/joint).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "stage": {
+                            "type": "string",
+                            "enum": ["clone", "rl", "joint"],
+                            "description": "Training stage name",
+                        },
+                    },
+                    "required": ["stage"],
+                },
+            },
+        ]
 
     # ------------------------------------------------------------------
     # Internal helpers

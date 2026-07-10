@@ -143,6 +143,7 @@ class CerebralCortex:
                             if len(self._learn_quality[key]) > 20:
                                 self._learn_quality[key] = self._learn_quality[key][-10:]
                 except Exception:
+                    logger.warning("CerebralCortex: failed to register learn quality data")
                     pass
                 return  # 有结果，不记录缺口
 
@@ -203,15 +204,10 @@ class CerebralCortex:
         """
         try:
             data = event.get("data", {})
-            event_type = data.get("type", "")
+            event_type = event.get("topic", data.get("type", ""))
 
-            # 只处理 evolve 和 learn 的 outcome（其他管道不参与熔断逻辑）
-            if event_type not in ("evolve_completed", "learn_completed"):
-                return
-
-            # 从事件推导 fitness delta
+            # 处理全部 7 个管道完成事件以扩展熔断覆盖
             if event_type == "evolve_completed":
-                # 优先使用 SignalFusionLayer 的结构化信号
                 try:
                     sf = getattr(self._omega, "signal_fusion", None)
                     if sf is not None:
@@ -222,37 +218,89 @@ class CerebralCortex:
                             self._record_outcome("evolve", before, delta)
                             return
                 except Exception:
+                    logger.warning("CerebralCortex: signal_fusion unavailable for evolve outcome")
                     pass
-                # 回退到原始 event data
                 before = data.get("fitness_before", 0.5)
                 after = data.get("fitness_after", 0.5)
                 delta = after - before
                 self._record_outcome("evolve", before, delta)
+
             elif event_type == "learn_completed":
                 new_nodes = data.get("new_nodes", 0)
                 outcome = min(1.0, new_nodes / 5.0)
                 fitness = self._omega._compute_fitness() if hasattr(self._omega, '_compute_fitness') else 0.5
                 self._record_outcome("learn", fitness, outcome)
-                # 学习质量反馈：注册 learn 产出供后续 recall 命中评估
                 try:
                     source = data.get("source", "?")
                     query = data.get("query", "?")
                     self.register_learn_for_quality(source, query, new_nodes)
                 except Exception:
+                    logger.warning("CerebralCortex: failed to register learn quality")
                     pass
+
+            # New handlers for remaining 5 pipes — track fitness delta/score for fuse logic
+            elif event_type == "reflect_completed":
+                score = data.get("composite_score", 0.5) or 0.5
+                drift = len(data.get("drift_alerts", [])) if isinstance(data.get("drift_alerts"), (list, tuple)) else (data.get("drift_alerts", 0) or 0)
+                # Drift count > 3 means reflect quality is degrading
+                outcome = max(0.0, min(1.0, 1.0 - drift / 10.0))
+                self._record_outcome("reflect", score, outcome)
+
+            elif event_type == "recall_completed":
+                hits = data.get("hits", 0) or 0
+                avg_score = data.get("avg_score", 0.0) or 0.0
+                gap = data.get("gap_empty", True)
+                outcome = avg_score * 0.7 + (0.3 if not gap else 0.0)
+                self._record_outcome("recall", hits / max(hits, 1), outcome)
+
+            elif event_type == "dream_completed":
+                patterns = data.get("patterns", 0) or 0
+                beliefs = data.get("beliefs", 0) or 0
+                outcome = min(1.0, (patterns + beliefs) / 10.0)
+                self._record_outcome("dream", patterns, outcome)
+
+            elif event_type == "remember_completed":
+                utility = data.get("utility", 0.5) or 0.5
+                self._record_outcome("remember", utility, utility - 0.3)
+
+            elif event_type == "maintain_completed":
+                expired = data.get("decayed", 0) or 0
+                heartbeat = data.get("heartbeat", False)
+                outcome = 0.8 if heartbeat else 0.3
+                self._record_outcome("maintain", 1.0 - min(1.0, expired / 100.0), outcome)
+
         except Exception as e:
             logger.warning("CerebralCortex._on_outcome: %s", e)
 
     def _record_outcome(self, trigger_type: str, fitness: float, delta: float) -> None:
-        """记录 trigger 的 outcome 到历史。"""
+        """记录 trigger 的 outcome 到历史并推送反馈。"""
         now = time.time()
         outcomes = self._trigger_outcomes[trigger_type]
 
         # 保持窗口大小
+        if len(outcomes) >= self._config["max_outcomes_per_trigger"] * 2:
+            outcomes.pop(0)
+
         outcomes.append((fitness, delta, now))
-        window = self._config["adapt_window_size"]
-        if len(outcomes) > window * 2:
-            self._trigger_outcomes[trigger_type] = outcomes[-window:]
+
+        # 推送反馈到 CNS：这个管道的执行结果
+        effective = delta > 0
+        try:
+            sf = getattr(self._omega, "signal_fusion", None)
+            if sf is not None:
+                sf.push_feedback({
+                    "from": trigger_type,
+                    "to": trigger_type,
+                    "type": "quality" if effective else "efficacy",
+                    "data": {
+                        "fitness": round(fitness, 4),
+                        "delta": round(delta, 4),
+                        "effective": effective,
+                        "source": "cc_outcome",
+                    },
+                })
+        except Exception as e:
+            logger.debug("CC: push_feedback failed: %s", e)
 
         # 检查熔断
         self._check_fuse(trigger_type)
@@ -410,6 +458,7 @@ class CerebralCortex:
                         self._omega.signal_fusion.report_merge(
                             "reflect", gap, suggested_interval=120)
                     except Exception:
+                        logger.warning("CerebralCortex: failed to report merge to signal_fusion")
                         pass
                     logger.debug("CerebralCortex: merged reflect (%d triggers in %.1fs)",
                                  len(self._merge_reasons["reflect"]), gap)
@@ -511,6 +560,7 @@ class CerebralCortex:
         try:
             current_threshold = self._omega.cns._thresholds.get("reflect_to_evolve_max_score", 0.5)
         except Exception:
+            logger.warning("CerebralCortex: failed to read CNS threshold")
             pass
 
         # 成功率统计

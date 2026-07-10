@@ -1048,10 +1048,12 @@ class MinervaStore:
         try:
             raw_chunk = row["raw_chunk"] if "raw_chunk" in row.keys() else ""
         except Exception:
+            logger.warning("Store: failed to read raw_chunk from row, defaulting to empty")
             raw_chunk = ""
         try:
             trust_state = row["trust_state"] if "trust_state" in row.keys() else "unknown"
         except Exception:
+            logger.warning("Store: failed to read trust_state from row, defaulting to unknown")
             trust_state = "unknown"
         return Node(
             id=row["id"],

@@ -42,12 +42,62 @@ class AutonomicRegulator:
         self._consecutive_zero_gain = 0
 
     def subscribe(self, bus: Any) -> None:
-        """订阅相关事件。"""
+        """订阅全部 7 管道完成事件。"""
         if hasattr(bus, "subscribe"):
             bus.subscribe("evolve_completed", self._on_evolve, priority=0.9)
             bus.subscribe("learn_completed", self._on_learn, priority=0.7)
             bus.subscribe("maintain_completed", self._on_maintain, priority=0.6)
-            logger.info("AutonomicRegulator subscribed to 3 event types")
+            bus.subscribe("reflect_completed", self._on_reflect, priority=0.5)
+            bus.subscribe("recall_completed", self._on_recall, priority=0.4)
+            bus.subscribe("dream_completed", self._on_dream, priority=0.3)
+            bus.subscribe("remember_completed", self._on_remember, priority=0.2)
+            logger.info("AutonomicRegulator subscribed to 7 event types")
+
+    def _on_reflect(self, event: dict) -> None:
+        """reflect 完成后——检查系统自检质量。"""
+        try:
+            data = event.get("data", {})
+            score = data.get("composite_score", 0.5) or 0.5
+            drift_count = len(data.get("drift_alerts", [])) if isinstance(data.get("drift_alerts"), (list, tuple)) else (data.get("drift_alerts", 0) or 0)
+            # Low reflect score + high drift → system in decline
+            if score < 0.4 and drift_count > 2:
+                self._consecutive_zero_gain += 1
+                if self._consecutive_zero_gain >= 2:
+                    logger.info("AR: consecutive low reflect scores, adjusting curiosity")
+            else:
+                self._consecutive_zero_gain = 0
+        except Exception as e:
+            logger.warning("AR._on_reflect: %s", e)
+
+    def _on_recall(self, event: dict) -> None:
+        """recall 完成后——检查召回质量。"""
+        try:
+            data = event.get("data", {})
+            hits = data.get("hits", 0) or 0
+            # Zero-hits recall may indicate knowledge gap
+            if hits == 0:
+                logger.debug("AR: recall returned 0 hits")
+        except Exception as e:
+            logger.warning("AR._on_recall: %s", e)
+
+    def _on_dream(self, event: dict) -> None:
+        """dream 完成后——检查模式发现质量。"""
+        try:
+            data = event.get("data", {})
+            patterns = data.get("patterns_found", 0) or 0
+            beliefs = data.get("beliefs_synthesized", 0) or 0
+            if patterns == 0 and beliefs == 0:
+                logger.debug("AR: dream found no patterns")
+        except Exception as e:
+            logger.warning("AR._on_dream: %s", e)
+
+    def _on_remember(self, event: dict) -> None:
+        """remember 完成后——记录写操作。"""
+        try:
+            data = event.get("data", {})
+            _ = data.get("status", "?")
+        except Exception as e:
+            logger.warning("AR._on_remember: %s", e)
 
     def _on_evolve(self, event: dict) -> None:
         """evolve 完成后——比较 fitness 变化，更新策略奖励。"""
@@ -84,6 +134,7 @@ class AutonomicRegulator:
                                }}
                     self._omega.signal_fusion.push_feedback(outcome)
             except Exception:
+                logger.warning("AutonomicRegulator: failed to push evolve feedback")
                 pass
 
             # 2. 连续 fitness 下降 → 触发降级
@@ -99,6 +150,7 @@ class AutonomicRegulator:
                     rarity=max(0.01, abs(delta)),
                 )
             except Exception:
+                logger.warning("AutonomicRegulator: failed to record evolve thermodynamic observation")
                 pass
 
         except Exception as e:
@@ -123,10 +175,11 @@ class AutonomicRegulator:
                         priority=10,
                     )
                 except Exception:
+                    logger.warning("AutonomicRegulator: failed to add curiosity topic")
                     pass
                 self._consecutive_zero_gain = 0
 
-            # 喂入 thermodynamic
+            # 观察 learn 结果
             try:
                 self._omega.thermodynamic.observe_action(
                     action="learn",
@@ -134,6 +187,7 @@ class AutonomicRegulator:
                     rarity=max(0.01, new_nodes / 10),
                 )
             except Exception:
+                logger.warning("AutonomicRegulator: failed to record learn thermodynamic observation")
                 pass
 
         except Exception as e:
@@ -170,6 +224,7 @@ class AutonomicRegulator:
                     rarity=0.05,
                 )
             except Exception:
+                logger.warning("AutonomicRegulator: failed to record downgrade thermodynamic observation")
                 pass
 
             logger.info("AutonomicRegulator: triggered downgrade — %s", reason)

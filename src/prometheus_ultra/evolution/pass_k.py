@@ -181,6 +181,7 @@ class PassKConsistency:
                 passed = score >= 0.5
             return bool(passed), float(score)
         except Exception:
+            logger.warning("PassK: evaluation failed, returning 0")
             return False, 0.0
 
     def _default_evaluation(self, task: str, k: int, threshold: float,
@@ -335,6 +336,7 @@ class PassKConsistency:
                     result = evaluate_fn(task, output)
                     score = result if isinstance(result, (int, float)) else 0.5
                 except Exception:
+                    logger.warning("PassK: evaluate_fn raised, scoring 0.0")
                     score = 0.0
             else:
                 score = self._heuristic_score(output, i)

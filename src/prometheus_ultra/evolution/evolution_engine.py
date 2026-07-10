@@ -579,6 +579,7 @@ class Evaluator:
                     else:
                         chromo.fitness = Evaluator._heuristic_fitness(genes)
                 except Exception:
+                    logger.warning("EvolutionEngine: evaluation failed, using heuristic fitness")
                     chromo.fitness = Evaluator._heuristic_fitness(genes)
             else:
                 genes = CrossoverEngine._flatten(chromo)

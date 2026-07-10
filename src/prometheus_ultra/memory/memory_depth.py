@@ -264,6 +264,22 @@ class EVAFMemoryDepthTracker:
             "trend_direction": trend,
         }
 
+    def record_consolidation(self, memory_id: str) -> None:
+        """Record a consolidation event for a memory.
+
+        Args:
+            memory_id: The memory ID to record consolidation for.
+        """
+        self._stats["consolidations"] = self._stats.get("consolidations", 0) + 1
+        logger.debug("EVAF: recorded consolidation for %s", memory_id)
+
+    def record_access(self, memory_id: str) -> None:
+        """Record an access event for a memory (backward compat for life.py).
+
+        Delegates to record_observation with safe defaults.
+        """
+        self.record_observation(memory_id, 0.0, 0.0, 0.5)
+
     def get_stats(self) -> dict[str, Any]:
         """Get aggregate EVAF statistics."""
         if not self._records:

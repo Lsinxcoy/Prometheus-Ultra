@@ -138,7 +138,11 @@ class FourNetworkMemory:
             age = time.time() - entry.get("last_access", time.time())
             recency = math.exp(-age / 3600)
 
-            score = 0.5 * relevance + 0.3 * importance + 0.2 * recency
+            # Generative Agents multiplicative formula: score = recency^δ × importance × relevance
+            # Using δ=1.0 (default) for standard exponential recency decay
+            # Add small epsilon to avoid zero-score for highly relevant content
+            recency_decay = recency ** 0.5  # δ = 0.5 for square-root decay
+            score = recency_decay * importance * relevance + 1e-10
 
             entry["access_count"] = entry.get("access_count", 0) + 1
             entry["last_access"] = time.time()
@@ -156,8 +160,55 @@ class FourNetworkMemory:
         return results[:top_k]
 
     # ------------------------------------------------------------------
-    # Reflection (Generative Agents)
+    # LLM Reflection (Generative Agents — arXiv 2304.03442)
     # ------------------------------------------------------------------
+
+    def _llm_reflection(
+        self,
+        generator_fn: callable,
+        query: str,
+        num_reflections: int = 3,
+    ) -> list[str]:
+        """Generate reflections by delegating synthesis to a callable.
+
+        Unlike the rule-based `reflect()` method, this uses an external
+        generator (typically an LLM) to produce deeper, more abstract
+        insights from recalled memories — matching the original Generative
+        Agents paper's LLM-driven reflection design.
+
+        Args:
+            generator_fn: A callable with signature
+                ``generator_fn(memories: list[dict], query: str, num: int)
+                -> list[str]``
+                that returns reflection strings. The callable receives the
+                raw recalled memories and is free to synthesize themes,
+                contradictions, and insights via its own logic (LLM, etc.).
+            query: The retrieval query that triggered reflection.
+            num_reflections: How many reflections to request.
+
+        Returns:
+            List of reflection strings produced by the generator.
+
+        Example:
+            >>> def llm_summarizer(memories, query, num):
+            ...     # Call an actual LLM here
+            ...     return [f"LLM insight: {m['content'][:30]}..." for m in memories[:num]]
+            >>> reflections = memory._llm_reflection(llm_summarizer, "reinforcement learning", 3)
+        """
+        memories = self.recall(query, top_k=num_reflections * 3)
+        reflections = generator_fn(memories, query, num_reflections)
+
+        # Store reflections internally (same format as reflect())
+        timestamp = time.time()
+        for r in reflections[:num_reflections]:
+            self._reflections.append({
+                "content": r,
+                "query": query,
+                "ts": timestamp,
+                "source": "llm_reflection",
+            })
+        self._last_reflection_time = timestamp
+        return reflections[:num_reflections]
 
     def reflect(self, query: str, num_reflections: int = 3) -> list[str]:
         """Generate reflections from memories (from Generative Agents paper).
@@ -321,6 +372,66 @@ class FourNetworkMemory:
                             return contradictions
 
         return contradictions
+
+    # ------------------------------------------------------------------
+    # LLM Planning (Generative Agents — arXiv 2304.03442)
+    # ------------------------------------------------------------------
+
+    def _llm_planning(
+        self,
+        generator_fn: callable,
+        reflections: list[str] | None = None,
+        goal: str = "",
+        num_plans: int = 3,
+    ) -> list[dict]:
+        """Generate structured plans by delegating to a callable.
+
+        Unlike the rule-based `plan()` method, this uses an external
+        generator (typically an LLM) to produce action plans — matching
+        the Generative Agents paper's approach of using LLM to generate
+        believable daily plans based on reflections and goals.
+
+        Args:
+            generator_fn: A callable with signature
+                ``generator_fn(reflections: list[str], goal: str, num: int)
+                -> list[dict]``
+                Each returned dict must have keys:
+                  - goal (str): overarching objective
+                  - actions (list[str]): concrete action steps
+                  - priority (float): estimated importance 0-1
+                  - prerequisites (list[str]): conditions to meet first
+            reflections: Reflection strings to base plans on.
+                Uses stored reflections if None.
+            goal: Optional explicit goal.
+            num_plans: Number of plan variants to generate.
+
+        Returns:
+            List of structured plan dicts.
+        """
+        using_reflections = reflections or [
+            r["content"] for r in self._reflections[-5:]
+        ] or ["General memory consolidation"]
+
+        plans = generator_fn(using_reflections, goal, num_plans)
+
+        # Validate and store plans
+        timestamp = time.time()
+        validated = []
+        for i, p in enumerate(plans[:num_plans]):
+            plan = {
+                "goal": p.get("goal", goal or "LLM-generated plan"),
+                "actions": p.get("actions", ["Review memory patterns"]),
+                "priority": max(0.0, min(1.0, p.get("priority", 0.5))),
+                "prerequisites": p.get("prerequisites", []),
+                "variant": i,
+                "num_reflections": len(using_reflections),
+                "source": "llm_planning",
+            }
+            plan["ts"] = timestamp
+            self._plans.append(plan)
+            validated.append(plan)
+
+        return validated
 
     # ------------------------------------------------------------------
     # Planning (Generative Agents)

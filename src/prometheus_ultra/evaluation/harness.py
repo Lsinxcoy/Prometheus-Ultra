@@ -286,6 +286,7 @@ class HarnessX:
                 else:
                     scores.append(0.0)
             except Exception:
+                logger.warning("Harness: failed to evaluate trace, defaulting score to 0")
                 scores.append(0.0)
 
         avg_score = sum(scores) / max(len(scores), 1)

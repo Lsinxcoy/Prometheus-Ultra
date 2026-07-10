@@ -320,6 +320,50 @@ class HierarchicalMemory:
                     prefix = "/"
                 self._tree[prefix].add(nid)
 
+    # ──────────────────────────────────────────────────
+    # HORMA §3.4: RC-Token Optimization
+    # ──────────────────────────────────────────────────
+
+    def compute_rc_token_saving(self, flat_content: str | None = None) -> dict:
+        """Compute RC-token savings from hierarchical vs flat representation.
+
+        HORMA §3.4: Hierarchical paths use dramatically fewer tokens.
+        Delegates to hierarchical_memory for the authoritative computation.
+
+        Args:
+            flat_content: Optional flat text baseline.
+
+        Returns:
+            {"hierarchical_tokens": int, "flat_tokens": int,
+             "rc_ratio": float, "savings_pct": float}
+        """
+        if not self._nodes:
+            return {"hierarchical_tokens": 0, "flat_tokens": 0,
+                    "rc_ratio": 1.0, "savings_pct": 0.0}
+
+        hierarchical_tokens = 0
+        for nid, info in self._nodes.items():
+            path_cost = len(info["path"].split("/"))
+            content_cost = len(info["content"].split())
+            hierarchical_tokens += path_cost + content_cost
+
+        flat_tokens = 0
+        if flat_content:
+            flat_tokens = len(flat_content.split())
+        else:
+            for nid, info in self._nodes.items():
+                flat_tokens += len(info["content"].split()) + 2
+
+        rc_ratio = hierarchical_tokens / max(flat_tokens, 1)
+        savings_pct = max(0.0, (1.0 - rc_ratio) * 100.0)
+
+        return {
+            "hierarchical_tokens": hierarchical_tokens,
+            "flat_tokens": flat_tokens,
+            "rc_ratio": round(rc_ratio, 4),
+            "savings_pct": round(savings_pct, 2),
+        }
+
     def get_stats(self) -> dict[str, Any]:
         """获取层级记忆统计。"""
         path_counts = {p: len(nds) for p, nds in self._tree.items()

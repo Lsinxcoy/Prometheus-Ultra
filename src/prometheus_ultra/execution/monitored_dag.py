@@ -162,8 +162,9 @@ class MonitoredDAG:
             # 模拟任务执行
             return True
         except Exception:
+            logger.warning("MonitoredDAG: check_node failed, returning False")
             return False
-    
+
     def get_stats(self) -> dict:
         """获取执行统计."""
         if not self._reports:

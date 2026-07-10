@@ -65,6 +65,8 @@ class EvalDrivenEngine:
         # FATE: failure trajectory tracking
         self._failure_trajectories: list[dict] = []
         self._consecutive_failures = 0
+        # FATE extension: Pareto front tracking (PFPO)
+        self._pareto_front: list[dict] = []
 
     def _init_population(self, seed_fitness: float = 0.5):
         self._population = [
@@ -153,6 +155,21 @@ class EvalDrivenEngine:
             else:
                 self._consecutive_failures = 0
                 self._mutation_rate = max(0.1, self._mutation_rate * 0.95)
+
+            # Pareto front update: track non-dominated solutions
+            current = {"iteration": i, "fitness": best_fit, "diversity": self._diversity(fitnesses)}
+            dominated = False
+            for pf_sol in list(self._pareto_front):
+                if pf_sol["fitness"] >= best_fit and pf_sol["diversity"] >= self._diversity(fitnesses):
+                    dominated = True
+                    break
+                if best_fit >= pf_sol["fitness"] and self._diversity(fitnesses) >= pf_sol["diversity"]:
+                    self._pareto_front.remove(pf_sol)
+            if not dominated:
+                self._pareto_front.append(current)
+                if len(self._pareto_front) > 20:
+                    self._pareto_front.sort(key=lambda x: -x["fitness"])
+                    self._pareto_front = self._pareto_front[:20]
 
         final_fitnesses = [self._evaluate_fitness(g) for g in self._population]
         best = max(final_fitnesses)

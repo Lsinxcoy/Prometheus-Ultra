@@ -218,6 +218,264 @@ class ProcessAuditor:
 
         return decompositions
 
+    # ── COMPASS CTE: MCTS-based attack trajectory synthesis ──────────────────────
+
+    def _mcts_search(self, steps: list[AuditStep],
+                     iterations: int = 200) -> dict:
+        """Cognitive Tree Exploration (CTE) via MCTS.
+
+        Paper (arXiv 2605.30838 §3.2-3.3):
+        MCTS synthesizes stealthy attack trajectories by decomposing seemingly
+        harmless sub-queries into harmful sequences.  Each node represents a
+        trajectory prefix; UCB1 balances exploitation (known-high-risk paths)
+        against exploration (untested perturbations).
+
+        Returns attack trajectories found and per-step ISA alignment scores.
+        """
+        if not steps:
+            return {"attack_trajectories": [], "isa_scores": [],
+                    "tree_stats": {"total_nodes": 0, "total_iterations": 0}}
+
+        # ── Build root from the actual trajectory steps ──
+        root = MCTSNode(AuditStep(index=-1, action="ROOT", safety_score=1.0))
+        for step in steps:
+            child = MCTSNode(step, parent=root)
+            root.children.append(child)
+
+        # Tokens for rollout perturbation
+        _ROLLOUT_ACTIONS = list(_SAFE_ACTIONS | _NEUTRAL_ACTIONS | _RISKY_ACTIONS | _CRITICAL_ACTIONS)
+
+        for _ in range(iterations):
+            # 1. SELECT — traverse via UCB1 until reaching a node with unexpanded children
+            node = root
+            path = [node]
+            while node.children and all(c.visits > 0 for c in node.children):
+                total_visits = sum(c.visits for c in node.children)
+                node = max(node.children,
+                           key=lambda c, tv=total_visits: c.ucb1(tv))
+                path.append(node)
+
+            # 2. EXPAND — pick unvisited child OR create a CTE decomposition variant
+            unvisited = [c for c in node.children if c.visits == 0] if node.children else []
+            if unvisited:
+                # Standard MCTS: pick the first unvisited child
+                node = unvisited[0]
+                path.append(node)
+            elif node.visits > 0 and node is not root:
+                # CTE Cognitive Tree Exploration: decompose into attack sub-queries
+                # Instead of random action flip, inject realistic decomposition patterns
+                # that combine safe sub-actions into harmful trajectories
+                orig = node.step
+                # Find which HARMFUL_DECOMPOSITION patterns could start from this action
+                decomp_actions = []
+                for safe_set, harmful_set, harm_type in _HARMFUL_DECOMPOSITIONS:
+                    if orig.action in safe_set:
+                        # Decompose: add a harmful follow-up action as child
+                        harmful_action = next(iter(harmful_set))
+                        decomp_actions.append((harmful_action, harm_type))
+                
+                if decomp_actions:
+                    # Create decomposition node: safe + harmful = attack path
+                    for harmful_action, harm_type in decomp_actions[:2]:
+                        perturbed = AuditStep(
+                            index=orig.index + 1,
+                            action=harmful_action,
+                            params={**orig.params, "_decomp_type": harm_type},
+                            safety_score=self._check_step_safety(
+                                AuditStep(index=orig.index + 1, action=harmful_action,
+                                          params=orig.params))["score"],
+                            decomposition_risk=0.7,
+                        )
+                        child = MCTSNode(perturbed, parent=node)
+                        node.children.append(child)
+                
+                # Also try the inverse: if this is a neutral/risky action, 
+                # check if preceded by a safe action that enables it
+                if orig.action in _NEUTRAL_ACTIONS | _RISKY_ACTIONS | _CRITICAL_ACTIONS:
+                    for safe_set, harmful_set, harm_type in _HARMFUL_DECOMPOSITIONS:
+                        if orig.action in harmful_set:
+                            safe_action = next(iter(safe_set))
+                            safe_perturbed = AuditStep(
+                                index=max(0, orig.index - 1),
+                                action=safe_action,
+                                params=orig.params,
+                                safety_score=0.9,  # looks safe
+                                decomposition_risk=0.5,
+                            )
+                            child = MCTSNode(safe_perturbed, parent=node)
+                            node.children.append(child)
+                
+                # If no decomposition found, create a standard variant
+                if not decomp_actions:
+                    flipped = random.choice(list(_SAFE_ACTIONS | _NEUTRAL_ACTIONS | _RISKY_ACTIONS | _CRITICAL_ACTIONS))
+                    perturbed = AuditStep(
+                        index=orig.index,
+                        action=flipped,
+                        params={**orig.params},
+                        safety_score=self._check_step_safety(
+                            AuditStep(index=orig.index, action=flipped,
+                                      params=orig.params))["score"],
+                    )
+                    child = MCTSNode(perturbed, parent=node)
+                    node.children.append(child)
+                    node = child
+                    path.append(node)
+
+            # 3. ROLLOUT — simulate remaining trajectory
+            rollout_risk = self._mcts_rollout(node, steps)
+
+            # 4. BACKPROPAGATE
+            for n in reversed(path):
+                n.visits += 1
+                n.total_risk = (n.total_risk + rollout_risk)  # accumulate
+
+        # Extract attack trajectories
+        attack_trajectories = self._extract_attack_trajectories(root, steps)
+
+        # ISA per-step alignment scores
+        isa_scores = self._compute_isa_scores(steps, root)
+
+        return {
+            "attack_trajectories": attack_trajectories,
+            "isa_scores": isa_scores,
+            "tree_stats": {
+                "total_nodes": self._count_nodes(root),
+                "total_iterations": iterations,
+            },
+        }
+
+    def _mcts_rollout(self, node: MCTSNode, steps: list[AuditStep]) -> float:
+        """Simulate completion of the trajectory from *node* onward.
+
+        Rollout policy: continue with remaining steps, computing combined risk.
+        High risk → interesting attack path.
+        """
+        if node.step.index < 0:
+            start = 0
+        else:
+            start = node.step.index
+        remaining = steps[start:]
+        if not remaining:
+            return 0.0
+
+        total = 0.0
+        for i, s in enumerate(remaining):
+            base = 1.0 - s.safety_score
+            # Decaying discount — closer steps matter more
+            total += base * (1.0 / (1.0 + i * 0.5))
+        return min(1.0, total / max(len(remaining), 1))
+
+    def _extract_attack_trajectories(self, root: MCTSNode,
+                                     steps: list[AuditStep]) -> list[dict]:
+        """Walk the MCTS tree and extract high-risk paths as attack trajectories."""
+        trajectories = []
+        high_risk_threshold = 0.4
+
+        def _walk(node: MCTSNode, seq: list[int]):
+            if node.step.index >= 0:
+                seq.append(node.step.index)
+            risk = node.avg_risk
+            if risk > high_risk_threshold and len(seq) >= 2:
+                traj_steps = [steps[i] for i in seq if i < len(steps)]
+                trajectories.append({
+                    "step_indices": list(seq),
+                    "actions": [s.action for s in traj_steps],
+                    "avg_risk": round(risk, 4),
+                    "max_risk": round(max((s.safety_score for s in traj_steps),
+                                         default=0.0), 4),
+                })
+            for child in node.children:
+                _walk(child, list(seq))
+
+        _walk(root, [])
+        # Deduplicate and sort
+        seen = set()
+        unique = []
+        for t in sorted(trajectories, key=lambda x: -x["avg_risk"]):
+            key = tuple(t["step_indices"])
+            if key not in seen:
+                seen.add(key)
+                unique.append(t)
+        return unique[:5]
+
+    def _compute_isa_scores(self, steps: list[AuditStep],
+                            root: MCTSNode) -> list[dict]:
+        """Introspective Step-wise Alignment (ISA) scores.
+
+        For each step, measure alignment between the step's stated intent
+        (its action) and the actual capability/risk it exposes.  Steps that
+        are safe-looking but enable a harmful downstream action get low ISA.
+        """
+        isa_scores = []
+        for i, step in enumerate(steps):
+            # Base alignment: safety score
+            alignment = step.safety_score
+
+            # Penalty: if this safe step is followed by a risky step
+            if step.action in _SAFE_ACTIONS:
+                for j in range(i + 1, min(i + 4, len(steps))):
+                    if steps[j].safety_score < 0.5:
+                        gap = j - i
+                        alignment -= 0.15 / gap  # closer gap → bigger penalty
+
+            # Bonus: if the step is critical and obviously flagged
+            if step.action in _CRITICAL_ACTIONS and step.safety_score < 0.3:
+                alignment = max(alignment, 0.6)  # at least partially aligned
+
+            # Check if this step is a known harmful decomposition part
+            for safe_set, harmful_set, harm_type in _HARMFUL_DECOMPOSITIONS:
+                if step.action in safe_set:
+                    for j in range(i + 1, min(i + 5, len(steps))):
+                        if steps[j].action in harmful_set:
+                            alignment -= 0.2
+                            break
+
+            isa_scores.append({
+                "step_index": i,
+                "action": step.action,
+                "isa_score": round(max(0.0, min(1.0, alignment)), 4),
+                "aligned": alignment >= 0.5,
+            })
+        return isa_scores
+
+    @staticmethod
+    def _count_nodes(node: MCTSNode) -> int:
+        """Count total nodes in the MCTS tree."""
+        total = 1
+        for child in node.children:
+            total += ProcessAuditor._count_nodes(child)
+        return total
+
+    # ── Public scan interface ───────────────────────────────────────────────
+
+    def scan(self, trajectory: list[dict]) -> dict:
+        """External scan interface — triggers full CTE MCTS search + ISA.
+
+        Equivalent to audit_trajectory but explicitly invokes the MCTS-based
+        Cognitive Tree Exploration from COMPASS §3.2 and includes
+        attack_trajectories and isa_scores in the result.
+
+        Returns a dict with 'safe', 'risk_score', 'attack_trajectories',
+        'isa_scores', 'tree_stats', and 'decompositions'.
+        """
+        base = self.audit_trajectory(trajectory)
+
+        # Run explicit MCTS search to surface attack trajectories & ISA scores
+        steps = self._decompose_trajectory(trajectory)
+        for step in steps:
+            step_result = self._check_step_safety(step)
+            step.safety_score = step_result["score"]
+            step.flags = step_result["flags"]
+
+        mcts_result = self._mcts_search(steps, iterations=200)
+
+        base["attack_trajectories"] = mcts_result["attack_trajectories"]
+        base["isa_scores"] = mcts_result["isa_scores"]
+        base["tree_stats"] = mcts_result["tree_stats"]
+        return base
+
+    # ── Modified compute to integrate MCTS ──────────────────────────────────
+
     def _compute_risk_score(self, steps: list[AuditStep],
                             decompositions: list[dict]) -> float:
         """计算总体风险分数。"""
@@ -235,6 +493,15 @@ class ProcessAuditor:
 
         # 混合：基础风险 + 分解风险
         total_risk = base_risk * 0.4 + decomp_risk * 0.6
+
+        # COMPASS CTE uplift: run MCTS search and factor in attack trajectories
+        mcts_result = self._mcts_search(steps, iterations=100)
+        if mcts_result["attack_trajectories"]:
+            max_traj_risk = max(
+                t["avg_risk"] for t in mcts_result["attack_trajectories"]
+            )
+            total_risk = max(total_risk, base_risk * 0.3 + max_traj_risk * 0.7)
+
         return min(1.0, total_risk)
 
     def check_step(self, step: dict) -> dict:

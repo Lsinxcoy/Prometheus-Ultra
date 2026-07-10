@@ -143,6 +143,41 @@ class CNSOrchestrator:
                 logger.warning("CNS._can_trigger: CC fuse check failed for %s: %s",
                                pipeline, e)
 
+        # 反馈队列轮询：消费其他层推送的反馈
+        if sf is not None:
+            try:
+                pending = sf.pop_feedback(pipeline)
+                if pending:
+                    logger.debug("CNS: %d pending feedback(s) for %s", len(pending), pipeline)
+                    for fb in pending:
+                        if fb.get("type") == "suppress":
+                            logger.info("CNS: feedback suppresses %s (reason=%s)",
+                                        pipeline, fb.get("data", {}))
+                            return False
+                        # quality/efficacy feedback: adjust CNS thresholds
+                        elif fb.get("type") == "quality":
+                            # Good outcome → keep threshold
+                            fd = fb.get("data", {})
+                            if fd.get("delta", 0) > 0.05:
+                                # Lower the trigger threshold slightly (easier to trigger)
+                                interval_key = pipeline
+                                current = self._min_interval.get(interval_key, 30)
+                                self._min_interval[interval_key] = max(10, current - 2)
+                                logger.debug("CNS: quality feedback lowered %s interval to %d",
+                                             pipeline, self._min_interval[interval_key])
+                        elif fb.get("type") == "efficacy":
+                            # Poor outcome → raise threshold (harder to trigger)
+                            fd = fb.get("data", {})
+                            if fd.get("delta", 0) < -0.05:
+                                interval_key = pipeline
+                                current = self._min_interval.get(interval_key, 30)
+                                self._min_interval[interval_key] = min(120, current + 5)
+                                logger.debug("CNS: efficacy feedback raised %s interval to %d",
+                                             pipeline, self._min_interval[interval_key])
+            except Exception as e:
+                logger.warning("CNS._can_trigger: pop_feedback failed for %s: %s",
+                               pipeline, e)
+
         return True
 
     def _record_trigger(self, trigger: str, target: str, reason: str,

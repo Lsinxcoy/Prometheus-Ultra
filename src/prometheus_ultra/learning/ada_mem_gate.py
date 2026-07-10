@@ -73,6 +73,7 @@ class AdaMEMGate:
 
             return True
         except Exception:
+            logger.warning("AdaMemGate: exception in should_skip, fail-safe returning True")
             # fail-safe: 异常时默认检索（不放走查询比跳过安全）
             return True
 

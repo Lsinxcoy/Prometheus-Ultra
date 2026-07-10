@@ -14,13 +14,13 @@ Exposes all 7 pipelines as HTTP endpoints:
   POST /api/v1/branch/merge
   GET  /api/v1/branch/list
 """
+
 from __future__ import annotations
 
-# Suppress harmless RuntimeWarning from async libs at module load
+# Suppress coroutine RuntimeWarning pollution per Pitfall #23
 import warnings
 warnings.filterwarnings("ignore", message=".*coroutine.*was never awaited.*")
 
-# Filter coroutine repr from stderr via stderr wrapper
 import sys
 
 # Stderr interposition: clean coroutine pollution from async libs

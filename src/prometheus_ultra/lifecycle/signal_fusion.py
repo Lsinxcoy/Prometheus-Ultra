@@ -50,6 +50,9 @@ class SignalFusionLayer:
         # 链上下文通道 — chain_id -> {trigger_pipe, trigger_signals, ts}
         self._chain_context: dict[str, dict] = {}
 
+        # 管道执行结果缓存（双向语义穿透）
+        self._pipe_results: dict[str, dict] = {}
+
         # 反馈队列 — 任何层推送的跨管道反馈
         self._feedback_queue: list[dict] = []
 
@@ -193,6 +196,8 @@ class SignalFusionLayer:
     def set_chain_context(self, pipe: str, signals: dict) -> None:
         """CNS 在触发下游管道前调用。将触发管的完整信号挂到当前链。
 
+        增强：自动融合 CC 洞察 + AR 健康状态到上下文中。
+
         Args:
             pipe: 触发管道名（如 "learn"、"reflect"）
             signals: 触发管的完整信号 dict（来自 telemetry.query 或 event data）
@@ -200,10 +205,36 @@ class SignalFusionLayer:
         if not self._chain_stack:
             logger.debug("SFL: set_chain_context called with no active chain")
             return
+
+        # Merge CC insights if available
+        cc_insights = {}
+        try:
+            cc = self._omega.cerebral_cortex
+            if hasattr(cc, 'get_insights'):
+                cc_insights = cc.get_insights() or {}
+        except Exception as e:
+            logger.debug("SFL: CC insights merge failed: %s", e)
+
+        # Merge AR health state if available
+        ar_health = {}
+        try:
+            ar = self._omega.autonomic_regulator
+            if hasattr(ar, 'get_stats'):
+                ar_stats = ar.get_stats() or {}
+                ar_health = {
+                    "fitness_log_size": ar_stats.get("fitness_log_size", 0),
+                    "consecutive_zero_gain": ar_stats.get("consecutive_zero_gain", 0),
+                    "strategies_tracked": ar_stats.get("strategies_tracked", 0),
+                }
+        except Exception as e:
+            logger.debug("SFL: AR health merge failed: %s", e)
+
         active_id = self._chain_stack[-1]
         self._chain_context[active_id] = {
             "trigger_pipe": pipe,
             "trigger_signals": signals,
+            "cc_insights": cc_insights,
+            "ar_health": ar_health,
             "ts": time.time(),
         }
 
@@ -222,6 +253,50 @@ class SignalFusionLayer:
     def _clean_chain_context(self, cid: str) -> None:
         """chain_end 时清理上下文。"""
         self._chain_context.pop(cid, None)
+
+    # ─────────────────────────────────────────────
+    # 管道执行结果存储（双向语义穿透）
+    # ─────────────────────────────────────────────
+
+    def set_pipe_result(self, pipe: str, result: dict) -> None:
+        """管道在执行完毕后调用，将结果写入信号融合层。
+
+        下游管道可以通过 get_pipe_result() 读取上游管道的执行结果。
+        结果会被合并到 chain_context 中（如果存在活跃链）。
+
+        Args:
+            pipe: 管道名 (remember/recall/evolve/learn/reflect/dream/maintain)
+            result: 管道返回的执行结果 dict
+        """
+        self._pipe_results[pipe] = {
+            "result": result,
+            "ts": time.time(),
+        }
+        # 如果存在活跃链，也合并到 chain_context
+        if self._chain_stack:
+            active_id = self._chain_stack[-1]
+            if active_id in self._chain_context:
+                self._chain_context[active_id].setdefault("pipe_results", {})[pipe] = result
+
+    def get_pipe_result(self, pipe: str) -> dict | None:
+        """上游管道的执行结果（如果有的话）。
+
+        下游管道调用此接口读取上游管道的执行结果，
+        实现双向语义穿透（不仅是 CNS→管道，还有 管道→管道）。
+
+        Args:
+            pipe: 管道名
+
+        Returns:
+            管道执行结果 dict，或 None
+        """
+        entry = self._pipe_results.get(pipe)
+        if entry is None:
+            return None
+        # 5 秒内有效
+        if time.time() - entry["ts"] > 5.0:
+            return None
+        return entry["result"]
 
     # ─────────────────────────────────────────────
     # 反馈队列（v6.2.0）
@@ -276,6 +351,7 @@ class SignalFusionLayer:
                 return {}
             return getattr(snap, "signals", {}) or {}
         except Exception:
+            logger.warning("SignalFusion: failed to read pipe signals, returning empty")
             return {}
 
     def signal(self, pipe: str, field: str,
@@ -455,6 +531,7 @@ class SignalFusionLayer:
                         if pending is not None:
                             suggested = min(suggested, pending)
                 except Exception:
+                    logger.warning("SignalFusion: failed to check pending threshold from CC")
                     pass
 
             old_val = cns._thresholds.get(key, 0)

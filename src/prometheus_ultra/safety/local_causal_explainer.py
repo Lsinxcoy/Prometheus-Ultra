@@ -162,34 +162,77 @@ class LocalCausalExplainer:
     ) -> list[dict]:
         """Step 4: token-level causal tracing via simulated ablation.
 
-        For each candidate token, simulate removing it and check if it
-        would change the model output.  Since we don't have a live model,
-        we compute a proxy: the overlap between the token and the model
-        output indicates causal influence.
+        For each candidate token, simulate removing it and measure the
+        semantic impact using n-gram embedding cosine distance between
+        the original and ablated content — a proxy for the LOCA paper's
+        activation-space ablation when no live LLM is available.
+
+        Low embedding similarity after ablation = high causal influence.
         """
+        orig_emb = self._embed_text(content)
         results = []
         output_lower = model_output.lower()
         for token in target_tokens:
-            # Ablation impact proxy: does the token's content directly
-            # influence the model output?
+            ablated = content.replace(token, "")
+            ablated_emb = self._embed_text(ablated)
+
+            # Embedding shift: how much does content's representation change?
+            emb_sim = self._cosine_sim(orig_emb, ablated_emb)
+            influence = round(1.0 - emb_sim, 4)  # low sim = high influence
+
+            # Token-output overlap (secondary signal)
             token_words = token.split()
             overlap = sum(1 for w in token_words if w in output_lower)
-            influence = round(overlap / max(len(token_words), 1), 4)
+            overlap_influence = round(overlap / max(len(token_words), 1), 4)
 
-            # Compute a distinctive hash to represent the "ablation state"
+            # Combined: embedding similarity (primary) + token overlap (secondary)
+            combined_influence = round(influence * 0.7 + overlap_influence * 0.3, 4)
+
             ablation_id = hashlib.sha256(
-                content.replace(token, "").encode()
+                ablated.encode()
             ).hexdigest()[:12]
 
             results.append({
                 "token": token,
-                "influence": influence,
+                "influence": combined_influence,
+                "embedding_similarity": emb_sim,
+                "token_overlap": overlap_influence,
                 "ablation_id": ablation_id,
-                "output_differs": influence < 0.5,  # proxy for causal impact
+                "output_differs": combined_influence > 0.3,
             })
-        # Sort by influence ascending (low influence → ablation useful)
-        results.sort(key=lambda r: r["influence"])
+        results.sort(key=lambda r: r["influence"], reverse=True)
         return results
+
+    @staticmethod
+    def _embed_text(text: str) -> list[float]:
+        """Compute character 3-gram embedding for similarity comparison."""
+        if not text:
+            return [0.0] * 10
+        text = text.lower().strip()
+        # Use 3-gram frequency vector (top 10 most common chars' trigrams)
+        from collections import Counter
+        trigrams = Counter()
+        for i in range(max(0, len(text) - 2)):
+            trigrams[text[i:i+3]] += 1
+        total = sum(trigrams.values()) or 1
+        # Vector of top 10 trigram frequencies
+        top = trigrams.most_common(10)
+        return [count / total for _, count in top]
+
+    @staticmethod
+    def _cosine_sim(a: list[float], b: list[float]) -> float:
+        """Cosine similarity between two embedding vectors."""
+        if not a or not b:
+            return 0.0
+        max_len = max(len(a), len(b))
+        a_ext = a + [0.0] * (max_len - len(a))
+        b_ext = b + [0.0] * (max_len - len(b))
+        dot = sum(x * y for x, y in zip(a_ext, b_ext))
+        na = sum(x * x for x in a_ext) ** 0.5
+        nb = sum(y * y for y in b_ext) ** 0.5
+        if na == 0 or nb == 0:
+            return 0.0
+        return dot / (na * nb)
 
     def _rank_token_causes(
         self, target_tokens: list[str], ablation: list[dict]

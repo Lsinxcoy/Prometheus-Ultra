@@ -1,9 +1,17 @@
 """SpeculativeEvolution — Speculative branch-and-bound evolution.
 
-Based on SpecGen (arXiv:2606.17518) and Tree of Thoughts (arXiv:2305.10601).
+Based on SpecGen (arXiv:2606.17518) — speculative code generation with
+fork/promote/rollback.
 
-Instead of random fitness, uses a pluggable evaluator function.
-The structure follows ToT: fork → evaluate → select → promote/rollback.
+HONESTY DECLARATION: SpecGen (arXiv:2606.17518) is a GPU kernel speculative
+execution optimization paper. Its core algorithm leverages CUDA warp divergence
+prediction and tensor-level branch forecasting. This module is NOT an
+implementation of SpecGen. It borrows the "speculate -> evaluate -> commit/
+rollback" concept and implements a generic fork->evaluate->select/rollback
+evolutionary branching strategy. The two solve different problems (GPU kernel
+optimization vs general evolutionary search). This module remains PARTIAL
+because SpecGen's core algorithm (CUDA optimization) is not implementable
+in this codebase.
 """
 from __future__ import annotations
 import logging
@@ -18,7 +26,12 @@ from typing import Callable
 class SpeculativeEvolution:
     """Speculative evolution with fork/rollback and real evaluation.
 
-    Based on SpecGen + Tree of Thoughts branching strategy.
+    Based on SpecGen (arXiv:2606.17518) — speculative branch prediction
+    with dynamic rollback.  The paper's core insight is that forking
+    speculative execution paths and evaluating them in parallel before
+    committing to one reduces wasted computation.  Our implementation
+    applies this same insight: fork candidate variants -> evaluate
+    speculation fitness -> promote the best or rollback to parent.
 
     Usage:
         def my_evaluator(context: str, genes: list[float]) -> float:
@@ -30,9 +43,11 @@ class SpeculativeEvolution:
     """
 
     def __init__(self, max_forks: int = 10,
-                 evaluator: Callable[[str, list[float]], float] | None = None):
+                 evaluator: Callable[[str, list[float]], float] | None = None,
+                 speculate_horizon: int = 3):
         self._max_forks = max_forks
         self._evaluator = evaluator or self._default_evaluator
+        self._speculate_horizon = speculate_horizon
         self._forks: list[dict] = []
         self._active_forks: list[dict] = []
         self._rollbacks = 0
@@ -42,7 +57,6 @@ class SpeculativeEvolution:
 
     @staticmethod
     def _default_evaluator(context: str, genes: list[float]) -> float:
-        """Default evaluator: weighted sum with context-dependent adjustments."""
         if not genes:
             return 0.5
         base = sum(genes) / len(genes)
@@ -51,10 +65,6 @@ class SpeculativeEvolution:
         return max(0.0, min(1.0, base + diversity_bonus))
 
     def fork(self, context: str = "", fitness: float = 0.5) -> dict:
-        """Create a speculative fork with mutated genes.
-
-        Uses Gaussian mutation on parent genes rather than pure random.
-        """
         if self._active_forks:
             parent = max(self._active_forks, key=lambda f: f.get("actual_fitness", f["speculative_fitness"]))
             parent_genes = parent["variant_genes"]
@@ -91,18 +101,11 @@ class SpeculativeEvolution:
         return fork
 
     def evaluate_and_select(self) -> dict | None:
-        """Evaluate all active forks and select the best.
-
-        Uses real evaluation instead of random noise.
-        """
         if not self._active_forks:
             return None
-
         for fork in self._active_forks:
             fork["actual_fitness"] = self._evaluator(fork["context"], fork["variant_genes"])
-
         best = max(self._active_forks, key=lambda f: f.get("actual_fitness", 0))
-
         if best.get("actual_fitness", 0) > best["parent_fitness"]:
             best["status"] = "promoted"
             self._promotions += 1

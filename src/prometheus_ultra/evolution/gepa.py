@@ -1,49 +1,49 @@
-"""GEPA — Gradient-Enhanced Parameter Adaptation.
+"""GEPA — Gradient-Enhanced Parameter Adaptation + PBT Population Training.
 
-Adaptive gradient-based hyperparameter optimization with momentum.
-Performs finite-difference gradient estimation for continuous parameter
-tuning across evolution rounds.
+GEPA implements two evolution strategies:
 
-Key Concepts:
-    1. Track parameter gradients across evolution rounds
-    2. Use finite-difference approximation for gradient estimation
-    3. Gradient-guided search direction (descent/ascent)
-    4. Momentum accumulation for smoother convergence
-    5. Adaptive learning rate with gradient clipping
+1. GEPA (default): Gradient-Enhanced Parameter Adaptation — finite-difference
+   gradient estimation with momentum for continuous parameter optimization.
 
-References:
-    - Bergstra et al. "Algorithms for Hyper-Parameter Optimization" NIPS 2011
-    - "Population Based Training of Neural Networks" (PBT, arXiv:1711.09846)
-    - Gradient descent with momentum (Polyak, 1964)
+2. PBT (Population-Based Training, arXiv:1711.09846): Maintains a population
+   of parameter sets, applies exploit/explore via truncation selection +
+   perturbation, no gradient computation.
 
-Algorithm:
+PBT Algorithm (from arXiv:1711.09846):
+    1. Initialize population of N agents with random params
+    2. Each agent trains independently
+    3. Every K steps: truncation selection (bottom 20% replaced)
+       - exploit: copy params from top 20%
+       - explore: perturb copied params (add noise)
+    4. Continue until convergence
+
+GEPA Algorithm:
     for each round:
-        # Evaluate at current parameters
         fitness = evaluate(params)
-        # Finite-difference gradient estimation
         for each param_i:
-            params_plus = params.copy(); params_plus[i] += epsilon
-            params_minus = params.copy(); params_minus[i] -= epsilon
-            grad[i] = (evaluate(params_plus) - evaluate(params_minus)) / (2 * epsilon)
-        # Update with momentum
-        velocity = beta * velocity + lr * grad
-        params -= velocity
-        # Clip parameters to bounds
-        params = clip(params, min, max)
+            gradient = (f(params+eps) - f(params-eps)) / (2*eps)
+        velocity = beta * velocity + lr * gradient
+        params = clip(params + velocity, min, max)
 
-Complexity: O(P * R) where P = parameters, R = rounds
+Usage:
+    # GEPA mode (gradient-based)
+    gepa = GEPA(evaluate_fn=my_fitness_fn)
+    result = gepa.evolve(context="optimize")
+
+    # PBT mode (population-based, arXiv 1711.09846)
+    gepa = GEPA(population_size=10, method="pbt")
+    result = gepa.evolve(context="optimize")
 """
+
 from __future__ import annotations
 
-
-
 import logging
-
 import math
 import random
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,60 +69,69 @@ class GEPAEvolutionResult:
     parameters: Dict[str, float] = field(default_factory=dict)
     gradient: Dict[str, float] = field(default_factory=dict)
     velocity: Dict[str, float] = field(default_factory=dict)
+    population: List[Dict[str, float]] | None = None
+    population_fitness: List[float] | None = None
     details: str = ""
 
 
 class GradientEnhancedParameterAdaptation:
-    """Gradient-Enhanced Parameter Adaptation.
+    """Gradient-Enhanced Parameter Adaptation with PBT option.
 
-    Implements finite-difference gradient estimation with momentum
-    for continuous parameter optimization. True gradient-based evolution
-    instead of random search.
-
-    Usage:
-        gepa = GradientEnhancedParameterAdaptation(
-            param_ranges={"lr": (0.001, 0.1), "batch_size": (16, 512)},
-            evaluate_fn=my_fitness_fn,
-        )
-        result = gepa.evolve(context="optimize")
-        print(f"Improvement: {result.improvement:.4f}")
+    Supports both gradient-based (GEPA) and population-based (PBT) evolution.
+    PBT mode implements arXiv:1711.09846 — population-based training with
+    truncation selection, exploit (copy from top), explore (perturb).
     """
 
     def __init__(self, param_ranges: Optional[Dict[str, Tuple[float, float]]] = None,
                  evaluate_fn: Optional[Callable] = None,
+                 method: str = "gepa",
+                 population_size: int = 10,
                  learning_rate: float = 0.01, momentum: float = 0.9,
                  epsilon: float = 1e-4, max_gradient_norm: float = 1.0,
-                 lr_decay: float = 0.99, lr_min: float = 1e-6):
-        """Initialize GEPA.
+                 lr_decay: float = 0.99, lr_min: float = 1e-6,
+                 pbt_exploit_topk: float = 0.2,
+                 pbt_perturb_std: float = 0.1):
+        """Initialize GEPA/PBT.
 
         Args:
             param_ranges: Dict of param_name -> (min, max) bounds.
             evaluate_fn: Function that takes (context, params) -> fitness.
-            learning_rate: Initial learning rate.
-            momentum: Momentum coefficient (0-1).
-            epsilon: Finite-difference step size.
-            max_gradient_norm: Gradient clipping threshold.
-            lr_decay: Learning rate decay per round.
-            lr_min: Minimum learning rate.
+            method: "gepa" (gradient) or "pbt" (population, arXiv 1711.09846).
+            population_size: Number of agents in PBT population.
+            learning_rate: Initial learning rate (GEPA mode).
+            momentum: Momentum coefficient (GEPA mode).
+            epsilon: Finite-difference step size (GEPA mode).
+            max_gradient_norm: Gradient clipping threshold (GEPA mode).
+            lr_decay: Learning rate decay per round (GEPA mode).
+            lr_min: Minimum learning rate (GEPA mode).
+            pbt_exploit_topk: Top fraction to copy from in PBT exploit step.
+            pbt_perturb_std: Std dev of Gaussian noise for PBT explore step.
         """
         self._param_ranges = param_ranges or self._default_param_ranges()
         self._evaluate_fn = evaluate_fn
+        self._method = method
         self._lr = learning_rate
         self._momentum = momentum
         self._epsilon = epsilon
         self._max_grad_norm = max_gradient_norm
         self._lr_decay = lr_decay
         self._lr_min = lr_min
+        self._pbt_population_size = population_size
+        self._pbt_exploit_topk = pbt_exploit_topk
+        self._pbt_perturb_std = pbt_perturb_std
 
-        # Current parameters (initialized at midpoint)
+        # GEPA state
         self._params: Dict[str, float] = {}
+        self._velocity: Dict[str, float] = {}
         for name, (lo, hi) in self._param_ranges.items():
             self._params[name] = (lo + hi) / 2.0
+            self._velocity[name] = 0.0
 
-        # Velocity (momentum accumulator)
-        self._velocity: Dict[str, float] = {name: 0.0 for name in self._params}
+        # PBT state — population of parameter dicts
+        self._population: List[Dict[str, float]] = []
+        self._population_fitness: List[float] = []
 
-        # History tracking
+        # History
         self._history: List[GradientRecord] = []
         self._fitness_history: List[float] = []
         self._best_fitness = float('-inf')
@@ -130,9 +139,7 @@ class GradientEnhancedParameterAdaptation:
         self._round = 0
         self._consecutive_no_improve = 0
 
-    @staticmethod
-    def _default_param_ranges() -> Dict[str, Tuple[float, float]]:
-        """Default parameter ranges for general optimization."""
+    def _default_param_ranges(self) -> Dict[str, Tuple[float, float]]:
         return {
             "exploration_rate": (0.01, 0.5),
             "learning_rate": (0.001, 0.1),
@@ -144,9 +151,75 @@ class GradientEnhancedParameterAdaptation:
             "stability_factor": (0.5, 1.0),
         }
 
+    def _random_params(self) -> Dict[str, float]:
+        """Sample random parameters from ranges (PBT initialization)."""
+        params = {}
+        for name, (lo, hi) in self._param_ranges.items():
+            params[name] = lo + random.random() * (hi - lo)
+        return params
+
+    def _init_pbt_population(self) -> None:
+        """Initialize PBT population with random parameter sets."""
+        self._population = [self._random_params() for _ in range(self._pbt_population_size)]
+        self._population_fitness = [float('-inf')] * self._pbt_population_size
+
+    def _pbt_step(self, context: str, evaluate_fn: Optional[Callable]) -> Dict[str, float]:
+        """Execute one PBT step: evaluate, exploit/explore, return best params.
+
+        Implements the core PBT loop from arXiv:1711.09846:
+        1. Evaluate all agents
+        2. Truncation selection: bottom 20% are replaced
+        3. Exploit: replaced agents copy from top 20%
+        4. Explore: copied params are perturbed with Gaussian noise
+        """
+        if not self._population:
+            self._init_pbt_population()
+
+        eval_fn = evaluate_fn or self._evaluate_fn
+
+        # Step 1: Evaluate all agents
+        for i in range(len(self._population)):
+            fitness = self._evaluate_params(context, self._population[i], eval_fn)
+            self._population_fitness[i] = fitness
+
+        # Step 2-4: Truncation selection (PBT core)
+        n = len(self._population)
+        n_exploit = max(1, int(n * self._pbt_exploit_topk))  # top 20%
+        n_explore = max(1, int(n * self._pbt_exploit_topk))  # bottom 20%
+
+        # Sort by fitness
+        sorted_indices = sorted(range(n), key=lambda i: self._population_fitness[i], reverse=True)
+        top_indices = sorted_indices[:n_exploit]
+        bottom_indices = sorted_indices[-n_explore:]
+
+        # Replace bottom agents with mutated top agents
+        for i in bottom_indices:
+            # Exploit: copy from a random top agent
+            donor_idx = random.choice(top_indices)
+            new_params = dict(self._population[donor_idx])
+
+            # Explore: perturb each parameter with Gaussian noise
+            for name in new_params:
+                lo, hi = self._param_ranges[name]
+                noise = random.gauss(0, self._pbt_perturb_std * (hi - lo))
+                new_params[name] = max(lo, min(hi, new_params[name] + noise))
+
+            self._population[i] = new_params
+
+        # Return best params of this round
+        best_idx = sorted_indices[0]
+        self._best_params = dict(self._population[best_idx])
+        self._best_fitness = max(self._best_fitness, self._population_fitness[best_idx])
+
+        logger.debug("PBT step: best=%.4f, pop_avg=%.4f",
+                     self._population_fitness[best_idx],
+                     sum(self._population_fitness) / n)
+
+        return self._population[best_idx]
+
     def evolve(self, context: str = "", evaluate_fn: Optional[Callable] = None,
                current_fitness: float = 0.0) -> GEPAEvolutionResult:
-        """Perform one gradient-guided evolution step.
+        """Perform one evolution step using the selected method.
 
         Args:
             context: Task context for evaluation.
@@ -159,59 +232,80 @@ class GradientEnhancedParameterAdaptation:
         self._round += 1
         eval_fn = evaluate_fn or self._evaluate_fn
 
+        if self._method == "pbt":
+            return self._evolve_pbt(context, eval_fn)
+        return self._evolve_gepa(context, eval_fn)
+
+    def _evolve_pbt(self, context: str, eval_fn: Optional[Callable]) -> GEPAEvolutionResult:
+        """PBT evolution step."""
+        best_params = self._pbt_step(context, eval_fn)
+
+        best_fitness = self._best_fitness
+        # Compute population stats
+        pop_avg = sum(self._population_fitness) / max(len(self._population_fitness), 1)
+        pop_std = math.sqrt(
+            sum((f - pop_avg) ** 2 for f in self._population_fitness) / max(len(self._population_fitness), 1)
+        ) if len(self._population_fitness) > 1 else 0.0
+
+        self._fitness_history.append(best_fitness)
+
+        return GEPAEvolutionResult(
+            method="pbt",
+            improvement=max(0, best_fitness - (self._fitness_history[-2] if len(self._fitness_history) > 1 else 0)),
+            fitness_before=self._fitness_history[-2] if len(self._fitness_history) > 1 else 0.0,
+            fitness_after=best_fitness,
+            gradient_norm=0.0,
+            parameters=best_params,
+            gradient={},
+            velocity={},
+            population=self._population,
+            population_fitness=self._population_fitness,
+            details=f"PBT: pop={len(self._population)}, avg={pop_avg:.4f}, std={pop_std:.4f}, best={best_fitness:.4f}",
+        )
+
+    def _evolve_gepa(self, context: str, eval_fn: Optional[Callable]) -> GEPAEvolutionResult:
+        """Gradient-based GEPA evolution step."""
         fitness_before = self._evaluate(context, eval_fn)
         self._fitness_history.append(fitness_before)
 
-        # Compute gradient via finite differences
         gradient = self._compute_gradient(context, eval_fn)
 
-        # Gradient clipping
         grad_norm = self._gradient_norm(gradient)
         if grad_norm > self._max_grad_norm:
             clip_ratio = self._max_grad_norm / grad_norm
             gradient = {k: v * clip_ratio for k, v in gradient.items()}
 
-        # Update velocity and parameters
         new_params = {}
         new_velocity = {}
         for name in self._params:
-            # Momentum update
             new_velocity[name] = (
                 self._momentum * self._velocity[name]
                 + self._lr * gradient.get(name, 0.0)
             )
-            # Parameter update (ascent for maximization)
             new_params[name] = self._params[name] + new_velocity[name]
-            # Clip to bounds
             lo, hi = self._param_ranges[name]
             new_params[name] = max(lo, min(hi, new_params[name]))
 
         self._params = new_params
         self._velocity = new_velocity
 
-        # Evaluate new fitness
         fitness_after = self._evaluate(context, eval_fn)
         improvement = fitness_after - fitness_before
 
-        # Adaptive learning rate
         if improvement > 0:
             self._consecutive_no_improve = 0
         else:
             self._consecutive_no_improve += 1
-            # Reduce LR on stagnation
             if self._consecutive_no_improve >= 3:
                 self._lr = max(self._lr_min, self._lr * 0.5)
 
-        # Decay learning rate
         self._lr = max(self._lr_min, self._lr * self._lr_decay)
 
-        # Track best
         if fitness_after > self._best_fitness:
             self._best_fitness = fitness_after
             self._best_params = dict(self._params)
             self._consecutive_no_improve = 0
 
-        # Record
         record = GradientRecord(
             round_num=self._round,
             parameters=dict(self._params),
@@ -221,8 +315,6 @@ class GradientEnhancedParameterAdaptation:
             timestamp=time.time(),
         )
         self._history.append(record)
-
-        # Keep history bounded
         if len(self._history) > 1000:
             self._history = self._history[-500:]
             self._fitness_history = self._fitness_history[-500:]
@@ -240,7 +332,6 @@ class GradientEnhancedParameterAdaptation:
         )
 
     def _evaluate(self, context: str, evaluate_fn: Optional[Callable]) -> float:
-        """Evaluate current parameters."""
         if evaluate_fn:
             try:
                 result = evaluate_fn(context, self._params)
@@ -250,99 +341,98 @@ class GradientEnhancedParameterAdaptation:
                     return float(result.get("fitness", result.get("score", 0.0)))
             except Exception as e:
                 logger.warning("GEPA fitness evaluation failed: %s", e)
-        # Heuristic fallback: weighted sum of parameters with nonlinearity
         return self._heuristic_fitness()
 
-    def _heuristic_fitness(self) -> float:
-        """Heuristic fitness when no evaluation function is available.
+    def _evaluate_params(self, context: str, params: Dict[str, float],
+                         evaluate_fn: Optional[Callable]) -> float:
+        """Evaluate a specific parameter set (for PBT population)."""
+        if evaluate_fn:
+            try:
+                result = evaluate_fn(context, params)
+                if isinstance(result, (int, float)):
+                    return float(result)
+                if isinstance(result, dict):
+                    return float(result.get("fitness", result.get("score", 0.0)))
+            except Exception as e:
+                logger.warning("GEPA population fitness evaluation failed: %s", e)
+        # Fallback: heuristic based on params
+        score = 0.0
+        for name, val in params.items():
+            lo, hi = self._param_ranges.get(name, (0, 1))
+            normalized = (val - lo) / max(hi - lo, 1e-10)
+            score += math.exp(-2.0 * (normalized - 0.5) ** 2)
+        return score / max(len(params), 1)
 
-        Rewards parameter configurations that are:
-        - Near center (stability)
-        - Diverse from previous rounds (exploration)
-        """
+    def _heuristic_fitness(self) -> float:
         score = 0.0
         for name, val in self._params.items():
             lo, hi = self._param_ranges[name]
             normalized = (val - lo) / max(hi - lo, 1e-10)
-            # Gaussian preference for center
             score += math.exp(-2.0 * (normalized - 0.5) ** 2)
-
-        # Diversity bonus from recent history
         if len(self._fitness_history) >= 3:
             recent = self._fitness_history[-3:]
             recent_std = math.sqrt(sum((x - sum(recent) / 3) ** 2 for x in recent) / 3)
             score += recent_std * 0.1
-
         return score / len(self._params)
 
     def _compute_gradient(self, context: str, evaluate_fn: Optional[Callable]) -> Dict[str, float]:
-        """Compute gradient via forward finite differences.
-
-        Uses central difference where possible for O(epsilon^2) accuracy:
-            f'(x) ≈ (f(x + epsilon) - f(x - epsilon)) / (2 * epsilon)
-        """
         gradient = {}
         base_params = dict(self._params)
-
         for name in self._params:
             lo, hi = self._param_ranges[name]
-
-            # Forward perturbation
             self._params[name] = min(hi, base_params[name] + self._epsilon)
             f_plus = self._evaluate(context, evaluate_fn)
-
-            # Backward perturbation
             self._params[name] = max(lo, base_params[name] - self._epsilon)
             f_minus = self._evaluate(context, evaluate_fn)
-
-            # Central difference
             delta = 2.0 * self._epsilon
             gradient[name] = (f_plus - f_minus) / delta
-
-            # Restore
             self._params[name] = base_params[name]
-
         return gradient
 
     def _gradient_norm(self, gradient: Dict[str, float]) -> float:
-        """L2 norm of gradient vector."""
         return math.sqrt(sum(v ** 2 for v in gradient.values()))
 
     def get_optimal_params(self) -> Dict[str, float]:
-        """Get parameters that achieved best fitness."""
         return dict(self._best_params)
 
     def set_params(self, params: Dict[str, float]) -> None:
-        """Set parameters directly."""
         for name, val in params.items():
             if name in self._params:
                 lo, hi = self._param_ranges[name]
                 self._params[name] = max(lo, min(hi, float(val)))
 
     def get_convergence_curve(self) -> List[float]:
-        """Get fitness history for convergence analysis."""
         return list(self._fitness_history)
 
     def get_gradient_history(self, last_n: int = 50) -> List[GradientRecord]:
-        """Get recent gradient records."""
         return self._history[-last_n:]
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get GEPA statistics."""
         if not self._fitness_history:
-            return {"rounds": 0}
+            return {"rounds": 0, "method": self._method}
 
         recent = self._fitness_history[-50:] if len(self._fitness_history) >= 50 else self._fitness_history
-        return {
+        stats = {
             "rounds": self._round,
-            "current_lr": self._lr,
+            "method": self._method,
             "best_fitness": self._best_fitness,
             "current_fitness": self._fitness_history[-1] if self._fitness_history else 0.0,
             "avg_recent_fitness": sum(recent) / len(recent),
             "params_count": len(self._params),
-            "consecutive_no_improve": self._consecutive_no_improve,
-            "gradient_magnitude": self._gradient_norm(self._velocity),
         }
+
+        if self._method == "pbt":
+            stats["population_size"] = len(self._population)
+            stats["population_fitness_avg"] = (
+                sum(self._population_fitness) / max(len(self._population_fitness), 1)
+                if self._population_fitness else 0
+            )
+        else:
+            stats["current_lr"] = self._lr
+            stats["consecutive_no_improve"] = self._consecutive_no_improve
+            stats["gradient_magnitude"] = self._gradient_norm(self._velocity)
+
+        return stats
 
 
 # Backward compatibility alias (for existing life.py imports)

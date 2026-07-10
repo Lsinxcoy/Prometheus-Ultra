@@ -31,8 +31,8 @@ class ExplorationQuota:
     每日限制 + 强制修订轮.
     """
     
-    def __init__(self, max_daily: int = 20, revision_after: int = 10,
-                 revision_count: int = 3, weekly_max: int = 100):
+    def __init__(self, max_daily: int = 200, revision_after: int = 10,
+                 revision_count: int = 3, weekly_max: int = 3000):
         """初始化.
         
         Args:
