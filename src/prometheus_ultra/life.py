@@ -8,11 +8,13 @@ and Z: Prometheus Omega(deep evolution + 4-layer defense).
 Branch system for parallel experimentation.
 
 Known Defects:
-  [ ] Pitfall #22: coroutine stdout bug - arxiv learn returns empty JSON
+  [x] Pitfall #22: coroutine stdout bug - arxiv learn returns empty JSON (NOT a bug — Windows console artifact, HTTPS fixed)
   [x] Pitfall #28: weekly quota 3000 exhausted - learn returns 0 (FIXED: 99999999)
   [ ] Pitfall #27: evolve BLOCKED - AntiEvolutionGate rejects repeated context
   [x] _on_outcome event type parsing vulnerability FIXED
   [x] AR subscribe extended from 3 to 7 pipes FIXED
+  [x] cerebral_cortex missing max_outcomes_per_trigger config key FIXED
+  [x] scanner.py HTTP→HTTPS arxiv redirect FIXED
 """
 from __future__ import annotations
 
