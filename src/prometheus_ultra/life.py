@@ -19,6 +19,7 @@ Known Defects:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 from prometheus_ultra.foundation.schema import (
@@ -607,6 +608,36 @@ class Omega:
         # 初始化自我观察层
         from prometheus_ultra.learning.self_observation import SelfObservation
         self.self_observation = SelfObservation()
+
+        # 自发心跳线程 — 每60分钟自动触发 learn，CNS 链完成剩余管道
+        self._heartbeat_interval = 3600  # 60分钟
+        self._heartbeat_running = True
+        self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
+        self._heartbeat_thread.start()
+        logger.info("Heartbeat thread started (interval=%ds)", self._heartbeat_interval)
+
+    # ============================================================
+    # heartbeat — 自发周期循环，减少对 Hermes cron 的依赖
+    # ============================================================
+    def _heartbeat_loop(self):
+        """Daemon thread: 每 _heartbeat_interval 秒触发 learn，
+        CNS 链自动完成 reflect → evolve → dream → maintain。"""
+        while self._heartbeat_running:
+            try:
+                time.sleep(self._heartbeat_interval)
+                if not self._heartbeat_running:
+                    break
+                # 触发 learn，CNS 会链式触发剩余管道
+                result = self.learn(source="web", query="auto heartbeat",
+                                    max_results=1)
+                # 只记录成功/失败，不阻塞主循环
+                if result.get("success") or result.get("new_nodes", 0) > 0:
+                    logger.info("Heartbeat: learn OK (%d nodes)", result.get("new_nodes", 0))
+                else:
+                    logger.warning("Heartbeat: learn returned %s", result.get("reason", "unknown"))
+            except Exception as e:
+                logger.warning("Heartbeat cycle failed: %s", e)
+
     # ============================================================
     # remember pipeline (11 stages)
     # ============================================================
