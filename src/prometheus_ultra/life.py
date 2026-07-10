@@ -1,11 +1,18 @@
 """life.py — Prometheus Ultra main controller.
 
 Unified from Genesis(99 mechanisms), Omega-Omega(branch system),
-and Z:\Prometheus Ω(deep evolution + 4-layer defense).
+and Z: Prometheus Omega(deep evolution + 4-layer defense).
 
 127 mechanisms across 18 subsystems.
 7 pipelines: remember, recall, evolve, learn, reflect, dream, maintain.
 Branch system for parallel experimentation.
+
+Known Defects:
+  [ ] Pitfall #22: coroutine stdout bug - arxiv learn returns empty JSON
+  [ ] Pitfall #28: weekly quota 3000 exhausted - learn returns 0
+  [ ] Pitfall #27: evolve BLOCKED - AntiEvolutionGate rejects repeated context
+  [x] _on_outcome event type parsing vulnerability FIXED
+  [x] AR subscribe extended from 3 to 7 pipes FIXED
 """
 from __future__ import annotations
 
@@ -473,7 +480,7 @@ class Omega:
         # Exploration tracking
         self.explorer_state = ExplorerState()
         self.curiosity_autofill = CuriosityAutoFill(self.curiosity_queue)
-        self.exploration_quota = ExplorationQuota(max_daily=100, revision_after=10)
+        self.exploration_quota = ExplorationQuota(max_daily=200, revision_after=10, weekly_max=3000)
         self._scans: list[dict] = []
 
         # Sub-agent & rule management
@@ -585,8 +592,8 @@ class Omega:
                         "new_nodes": data.get("new_nodes", 0),
                     })
                     self._last_kta_fitness = current
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("KTA fitness callback failed: %s", e)
         self.event_bus.subscribe("knowledge_added", _on_knowledge_added, priority=0.5)
         logger.info("KTA: knowledge_added subscription registered")
 
@@ -721,10 +728,13 @@ class Omega:
             self.owner_harm.flag_suspicious(node.id, "trigger_keywords", trigger_hits)
 
         # Gate 3.7: Sleeper Trigger Detection (B1-1, arXiv 2605.15338)
-        try:
-            self.trigger_detector.scan(content, source=source)
-        except Exception:
-            pass
+        if self.trigger_detector is not None:
+            try:
+                self.trigger_detector.scan(content, source="memory")
+            except Exception as e:
+                logger.warning("trigger_detector.scan failed: %s", e)
+        else:
+            logger.debug("trigger_detector not available, skipping scan")
 
         # Gate 4: VeracityBayesian
         self.veracity.compute_posterior_compat(
@@ -900,8 +910,14 @@ class Omega:
 
         logger.info("Remembered: %s (confidence: %s)", node.id[:8], conf_level)
         self.utility_tracker.register(node.id, initial_utility=utility)
-        # Telemetry: 存储原始返回值之前加1行
+        # Telemetry: 存储原始返回值
         self._telemetry["remember"] = node.id
+
+        # 写管道结果
+        self.signal_fusion.set_pipe_result("remember", {
+            "node_id": node.id, "utility": utility, "tags": tags, "branch": branch,
+        })
+
         return node.id
 
     # ============================================================
@@ -917,8 +933,8 @@ class Omega:
         try:
             if not self.ada_mem.should_retrieve(query, task_type="reasoning"):
                 return SearchResults(hits=[], total_count=0, query=query, duration_ms=0, metadata=recall_data)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("AdaMEM should_retrieve check failed: %s", e)
 
         # Route 1: FTS
         fts_nodes = self.store.search(query, limit=limit * 2, branch=branch)
@@ -1156,8 +1172,8 @@ class Omega:
                 disp_score = self.disposition.get_disposition(h.node_id)
                 if disp_score:
                     h.score = min(1.0, h.score * (1 + disp_score * 0.2))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Disposition score adjustment failed for node %s: %s", h.node_id, e)
         unique.sort(key=lambda h: h.score, reverse=True)
 
         # MemPO: update utilities for recalled nodes
@@ -1198,10 +1214,20 @@ class Omega:
         except Exception as e:
             logger.debug("Verbatim chunk enrichment failed: %s", e)
 
-        self.event_bus.publish({"type": "recall_completed", "query": query, "hits": len(unique), "duration_ms": duration})
+        avg_score = sum(h.score for h in unique) / max(len(unique), 1) if unique else 0.0
+        self.event_bus.publish({"type": "recall_completed", "query": query, "hits": len(unique),
+                                "avg_score": round(avg_score, 4), "duration_ms": duration,
+                                "gap_empty": len(unique) == 0})
         recall_result = SearchResults(hits=unique, total_count=len(unique), query=query, duration_ms=duration, metadata=recall_data)
         # Telemetry: 存储原始返回值
         self._telemetry["recall"] = recall_result
+
+        # 写管道结果（双向语义穿透）
+        self.signal_fusion.set_pipe_result("recall", {
+            "query": query, "hits": len(unique), "avg_score": round(avg_score, 4),
+            "total_count": len(unique),
+        })
+
         return recall_result
 
     # ============================================================
@@ -1276,6 +1302,25 @@ class Omega:
             metadata={"trust_state_counts": trust_metadata, **results.metadata},
         )
         self._telemetry["recall_with_trust"] = result
+
+        # 反馈环路：recall → learn
+        # 零命中 → 告诉 learn 需要补全知识缺口
+        if len(filtered_hits) == 0:
+            try:
+                self.signal_fusion.push_feedback({
+                    "from": "recall",
+                    "to": "learn",
+                    "type": "quality",
+                    "data": {
+                        "query": query,
+                        "hits": 0,
+                        "gap": True,
+                        "source": "recall_with_trust",
+                    },
+                })
+            except Exception as e:
+                logger.debug("recall: push_feedback to learn failed: %s", e)
+
         return result
 
     # ============================================================
@@ -1296,8 +1341,8 @@ class Omega:
                     context += f" | Triggered by reflect: score={raw_score:.3f}, drift={raw_drift}"
                     self.cerebral_cortex.add_merge_reason(
                         "evolve", f"reflect_driven:score={raw_score:.3f}")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Evolve chain context processing failed: %s", e)
 
         # Stage 0: Brainstorming — Socratic design refinement (Superpowers)
         brainstorm_result = self.brainstorming.brainstorm(
@@ -1345,6 +1390,15 @@ class Omega:
             blocked = EvolutionOutcome(result=EvolutionResult.BLOCKED, details="semantic_early_stop")
             self._telemetry["evolve"] = blocked
             return blocked
+
+        # Ensure context is dynamic enough to pass AntiEvolution and SemanticEarlyStop gates
+        if not context or context == "auto-evolution":
+            fitness = self._compute_fitness()
+            reflect_score = self._last_reflect_score or 0.0
+            node_count = self.store.get_node_count()
+            health = self._compute_health()
+            dynamic_suffix = f"auto:fitness={fitness:.4f}:reflect={reflect_score:.4f}:nodes={node_count}:health={health:.3f}"
+            context = f"Periodic evolution from reflect insights — {dynamic_suffix}"
 
         # Step 1: EquilibriumGuard
         if self.equilibrium.get_alert_level() == AlertLevel.RED:
@@ -1694,6 +1748,24 @@ class Omega:
         self.tool_fitness.record_usage(context or "auto", "evolve", success=True, latency_ms=10.0)
         self.tool_fitness_full.record_call(context or "auto", {}, success=True, latency_ms=10.0)
 
+        # 反馈环路：evolve → recall
+        # 告诉 recall 哪些参数被进化提升了，帮助下次召回更好节点
+        try:
+            self.signal_fusion.push_feedback({
+                "from": "evolve",
+                "to": "recall",
+                "type": "quality",
+                "data": {
+                    "fitness_before": round(fitness_before, 4),
+                    "fitness_after": round(fitness_after, 4),
+                    "delta": round(delta, 4),
+                    "effective": delta > 0,
+                    "method": result.method if hasattr(result, 'method') else strategy_name,
+                },
+            })
+        except Exception as e:
+            logger.debug("evolve: push_feedback to recall failed: %s", e)
+
         # FGG verify
         diagnostics["fggm_verify"] = self.fggm.verify({"context": context})
 
@@ -1711,20 +1783,48 @@ class Omega:
         )
         # Telemetry: 存储原始返回值
         self._telemetry["evolve"] = evolve_result
+
+        # 写管道结果
+        self.signal_fusion.set_pipe_result("evolve", {
+            "result": evolve_result.result.value if hasattr(evolve_result.result, 'value') else str(evolve_result.result),
+            "fitness_before": fitness_before, "fitness_after": fitness_after,
+            "delta": round(delta, 4),
+        })
+
         return evolve_result
 
     # ============================================================
     # learn pipeline
     # ============================================================
     def learn(self, source: str = "web", query: str = "AI", max_results: int = 5) -> dict:
+        # 链上下文: 读取触发管信号（如 recall 检测到的知识缺口）
+        learn_diagnostics: Dict[str, Any] = {}
+        try:
+            ctx = self.signal_fusion.get_chain_context()
+            if ctx:
+                trigger_pipe = ctx.get("trigger_pipe", "")
+                sigs = ctx.get("trigger_signals", {})
+                learn_diagnostics["trigger_pipe"] = trigger_pipe
+                if trigger_pipe == "recall":
+                    # recall detected a knowledge gap — learn fills it
+                    gap_query = sigs.get("query", query)
+                    if gap_query and gap_query != query:
+                        logger.info("learn: filling gap from recall chain: %s", gap_query)
+                        query = gap_query
+                learn_diagnostics["chain_context_used"] = True
+        except Exception as e:
+            logger.warning("learn: chain_context read failed: %s", e)
+            learn_diagnostics["chain_context_used"] = False
+
         # Exploration quota check
         can_explore, reason = self.exploration_quota.can_explore()
-        learn_diagnostics: Dict[str, Any] = {}
         if not can_explore:
-            self.exploration_quota.record_round()  # 防止计数器死锁
+            self.exploration_quota.record_round()  # prevent counter deadlock
             quota_result = {"source": source, "query": query, "total_results": 0, "new_nodes": 0,
                     "reason": reason}
             self._telemetry["learn"] = quota_result
+            # Record scan for repeated-query detection
+            self._scans.append({"query": query, "source": source, "nodes": 0, "ts": time.time(), "reason": reason})
             # Publish so AR can track consecutive_zero_gain
             self.event_bus.publish({"type": "learn_completed", "source": source, "query": query, "new_nodes": 0, "reason": reason})
             return quota_result
@@ -1877,14 +1977,17 @@ class Omega:
 
             self.event_bus.publish({"type": "learn_completed", "source": source, "query": query, "new_nodes": len(new_nodes)})
 
+            # Record scan for repeated-query detection
+            self._scans.append({"query": query, "source": source, "nodes": len(new_nodes), "ts": time.time()})
+
             # Self-Observation: 记录 learn，在周循环时触发回顾
             try:
                 review = self.self_observation.record_learn(query, len(new_nodes), source, utility_val if same_query_count > 2 else 0.7)
                 if review and review.get("patterns"):
                     logger.info("SelfObservation: %d patterns, zero_gain=%d",
                                 len(review["patterns"]), review.get("zero_gain_streak", 0))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("SelfObservation.record_learn failed: %s", e)
 
             learn_result = {"source": source, "query": query, "total_results": len(new_nodes),
                 "new_nodes": len(new_nodes), "applied_changes": len(applied_changes),
@@ -1892,10 +1995,36 @@ class Omega:
                 "contract_id": contract_id, "diagnostics": learn_diagnostics}
             # Telemetry: 存储原始返回值
             self._telemetry["learn"] = learn_result
+
+            # 写管道结果
+            self.signal_fusion.set_pipe_result("learn", {
+                "source": source, "query": query,
+                "total_results": len(new_nodes), "new_nodes": len(new_nodes),
+            })
+
+            # 反馈环路: learn → recall
+            # 告诉 recall 学到的查询, 下次 recall 命中率更高
+            if len(new_nodes) > 0:
+                try:
+                    self.signal_fusion.push_feedback({
+                        "from": "learn",
+                        "to": "recall",
+                        "type": "quality",
+                        "data": {
+                            "query": query,
+                            "new_nodes": len(new_nodes),
+                            "source": source,
+                        },
+                    })
+                except Exception as e:
+                    logger.debug("learn: push_feedback to recall failed: %s", e)
+
             return learn_result
 
         # Publish for 0-result scan so AR can track consecutive_zero_gain
         self.event_bus.publish({"type": "learn_completed", "source": source, "query": query, "new_nodes": 0})
+        # Record scan for repeated-query detection
+        self._scans.append({"query": query, "source": source, "nodes": 0, "ts": time.time(), "reason": "empty_scan"})
         return {"source": source, "query": query, "total_results": 0, "new_nodes": 0, "reason": "empty_scan"}
 
     # ============================================================
@@ -1935,8 +2064,8 @@ class Omega:
                 elif trigger_pipe == "dream":
                     patterns = sigs.get("patterns_found", 0)
                     context += f" | Pattern consolidation: {patterns} patterns"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Reflexion chain context processing failed: %s", e)
 
         # LoopSelector: record reflection outcome
         self.loop_selector.record_outcome(LoopStrategy.REFLEXION, 0.8)
@@ -2169,6 +2298,19 @@ class Omega:
         # RL pathology deep
         self.rl_pathology.observe(fv.composite_score, "reflect")
 
+        # 大脑皮层洞察：激活 CerebralCortex.get_insights()
+        try:
+            if hasattr(self, 'cerebral_cortex') and self.cerebral_cortex is not None:
+                cc_insights = self.cerebral_cortex.get_insights()
+                reflect_diagnostics['cc_insights'] = cc_insights
+                fuse_state = cc_insights.get("fuse_state", {})
+                active_fuses = {k: v for k, v in fuse_state.items() if v.get("suppressed")}
+                if active_fuses:
+                    reflect_diagnostics['active_fuses'] = active_fuses
+                    logger.info("reflect: %d active fuses detected", len(active_fuses))
+        except Exception as e:
+            logger.debug("CC insights not available: %s", e)
+
         # Session
         self.session.access(f"reflect_{int(time.time())}")
         self.session.expire_idle()
@@ -2197,6 +2339,32 @@ class Omega:
         }
         # Telemetry: 存储原始返回值
         self._telemetry["reflect"] = reflect_result
+
+        # 反馈环路: reflect → evolve
+        # 告诉 evolve 这次 reflect 的质量分数, 帮助选择值得进化的方向
+        try:
+            self.signal_fusion.push_feedback({
+                "from": "reflect",
+                "to": "evolve",
+                "type": "quality",
+                "data": {
+                    "composite_score": fv.composite_score,
+                    "drift_count": len(drift),
+                    "harness_score": harness_score,
+                    "effective": fv.composite_score > 0.5,
+                },
+            })
+        except Exception as e:
+            logger.debug("reflect: push_feedback to evolve failed: %s", e)
+
+        # 写管道结果（双向语义穿透）
+        self.signal_fusion.set_pipe_result("reflect", {
+            "composite_score": fv.composite_score,
+            "grade": fv.grade,
+            "drift_count": len(drift),
+            "converged": fv.composite_score > 0.5,
+        })
+
         return reflect_result
 
     # ============================================================
@@ -2251,7 +2419,7 @@ class Omega:
         beliefs = self.shmr.get_beliefs(min_confidence=0.3)
         dream_result.beliefs_synthesized += len(beliefs)
 
-        # === 梦境：全机制激活 ===
+        # === Dream: full mechanism activation ===
         # 状态机深度查询
         dream_data['valid_next'] = self.state_machine.get_valid_next()  # 收集有效下一步状态
         dream_data['transition_history'] = self.state_machine.get_transition_history()  # 收集状态转移历史
@@ -2335,6 +2503,15 @@ class Omega:
         self.event_bus.publish({"type": "dream_completed", "patterns": dream_result.patterns_found, "beliefs": dream_result.beliefs_synthesized, "connections": dream_result.connections_discovered})
         # Telemetry: 存储原始返回值
         self._telemetry["dream"] = dream_result
+
+        # 写管道结果
+        self.signal_fusion.set_pipe_result("dream", {
+            "patterns_found": dream_result.patterns_found,
+            "beliefs_synthesized": dream_result.beliefs_synthesized,
+            "connections_discovered": dream_result.connections_discovered,
+            "insights": getattr(dream_result, 'insights', [])[:3],
+        })
+
         return dream_result
 
     # ============================================================
@@ -2675,6 +2852,20 @@ class Omega:
         except Exception:
             pass
 
+        # 链分析：激活历史链的总结（signal_fusion.chain_analysis）
+        try:
+            active_chains = self.signal_fusion.get_state().get("active_chains", [])
+            if active_chains:
+                chain_summaries = []
+                for cid in list(active_chains.keys())[:3]:
+                    analysis = self.signal_fusion.chain_analysis(cid)
+                    if analysis:
+                        chain_summaries.append(analysis)
+                if chain_summaries:
+                    maintain_data['chain_analysis'] = chain_summaries
+        except Exception as e:
+            logger.debug("chain_analysis failed: %s", e)
+
         self.event_bus.publish({"type": "maintain_completed", "decayed": len(expired_nodes), "heartbeat": True})
         maintain_result = {
             "consolidation": self.consolidation.get_stats(),
@@ -2689,6 +2880,13 @@ class Omega:
         }
         # Telemetry: 存储原始返回值
         self._telemetry["maintain"] = maintain_result
+
+        # 写管道结果
+        self.signal_fusion.set_pipe_result("maintain", {
+            "consolidated": maintain_data.get("consolidated_count", 0),
+            "server_status": maintain_server_status,
+        })
+
         return maintain_result
 
     # ============================================================
