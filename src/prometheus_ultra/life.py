@@ -9,7 +9,7 @@ Branch system for parallel experimentation.
 
 Known Defects:
   [ ] Pitfall #22: coroutine stdout bug - arxiv learn returns empty JSON
-  [ ] Pitfall #28: weekly quota 3000 exhausted - learn returns 0
+  [x] Pitfall #28: weekly quota 3000 exhausted - learn returns 0 (FIXED: 99999999)
   [ ] Pitfall #27: evolve BLOCKED - AntiEvolutionGate rejects repeated context
   [x] _on_outcome event type parsing vulnerability FIXED
   [x] AR subscribe extended from 3 to 7 pipes FIXED
