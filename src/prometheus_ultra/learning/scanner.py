@@ -80,7 +80,7 @@ SOURCE_CONFIG = {
     },
 }
 
-_TIMEOUT = 8  # seconds
+_TIMEOUT = 15  # seconds
 
 
 def _http_get(url: str, headers: dict | None = None) -> str | None:
@@ -167,7 +167,7 @@ class KnowledgeScanner:
             "sortBy": "submittedDate",
             "sortOrder": "descending",
         })
-        url = f"http://export.arxiv.org/api/query?{params}"
+        url = f"https://export.arxiv.org/api/query?{params}"
         xml_text = _http_get(url)
         if not xml_text:
             return [ScanResult(

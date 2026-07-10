@@ -58,6 +58,7 @@ class CerebralCortex:
         "adapt_min_samples": 5,       # 最小样本数才开始调参
         "adapt_success_threshold": 0.3,   # 成功率低于此值视为低效
         "adapt_re_evaluate_interval": 600,  # 熔断后重评估间隔（秒）
+        "max_outcomes_per_trigger": 20,     # 每个 trigger 类型保留的最大 outcome 数
 
         # 回路 C: 熔断
         "fuse_trigger": 5,            # 连续触发无效次数上限
