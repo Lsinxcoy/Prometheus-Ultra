@@ -3573,7 +3573,11 @@ class Omega:
         maintain_data['dag_state_summary'] = self.dag_executor.get_state_summary()
 
         # Monitored DAG deep
-        maintain_data['monitored_dag_execute'] = self.monitored_dag.execute_monitored()
+        try:
+            maintain_data['monitored_dag_execute'] = self.monitored_dag.execute_monitored([])
+        except Exception as e:
+            logger.debug("MonitoredDAG execution failed: %s", e)
+            maintain_data['monitored_dag_execute'] = None
         maintain_data['monitored_dag_latency'] = self.monitored_dag.get_latency_stats()
 
         # Parallel DAG deep
