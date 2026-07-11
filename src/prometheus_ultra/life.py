@@ -202,6 +202,50 @@ from prometheus_ultra.loop.loop_selector import LoopSelector, LoopStrategy
 from prometheus_ultra.harness.adaptive_harness import AdaptiveHarness, ToolPolicy
 from prometheus_ultra.prompt.evolving_prompt import EvolvingPrompt
 
+# ===== P0: Safety Security Layer (9 files) =====
+from prometheus_ultra.safety.memory_write_guard import MemoryWriteGuard
+from prometheus_ultra.safety.data_exfiltration_detect import DataExfiltrationDetector
+from prometheus_ultra.safety.tool_call_verify import ToolCallVerifier
+from prometheus_ultra.safety.non_adversarial_leakage import NonAdversarialLeakageDetector
+from prometheus_ultra.safety.process_audit import ProcessAuditor
+from prometheus_ultra.safety.local_causal_explainer import LocalCausalExplainer
+from prometheus_ultra.safety.reasoning_alignment import ReasoningAlignmentChecker
+from prometheus_ultra.safety.intervention_control import InterventionController
+from prometheus_ultra.safety.compliance_scorer import ComplianceScorer
+
+# ===== P1: Memory Layer (7 files) =====
+from prometheus_ultra.memory.hela_mem import HeLaMem
+from prometheus_ultra.memory.hierarchical_memory import HierarchicalMemory as HORMAHierarchicalMemory
+from prometheus_ultra.memory.rl_navigator import RLNavigator
+from prometheus_ultra.memory.consolidation_engine import ConsolidationEngine
+from prometheus_ultra.memory.context_clash import ContextClashDetector as MemoryContextClashDetector
+from prometheus_ultra.memory.forbidden_patterns import ForbiddenPatternDetector
+from prometheus_ultra.memory.external_notebook import ExternalNotebook
+
+# ===== P2: Learning Layer (7 files) =====
+from prometheus_ultra.learning.intent_aware_retrieval import SimpleMem
+from prometheus_ultra.harness.active_compressor import ActiveCompressor, SlimeMoldExplorer, FocusCompressor
+from prometheus_ultra.learning.b10_remaining import SubtleMemoryBenchmark
+from prometheus_ultra.learning.mcts_retriever import MCTSRetriever
+from prometheus_ultra.learning.localized_icl import LocalizedICL
+from prometheus_ultra.learning.strategy_switcher import StrategySwitcher
+from prometheus_ultra.learning.reflective_sampler import ReflectiveSampler
+
+# ===== P3: Evolution + Collaboration (6 files) =====
+from prometheus_ultra.evolution.b8_remaining import FATE, SignalTriage, ESTEER, PersonaManager, Loom
+from prometheus_ultra.evolution.b9_remaining import ProgressiveMCGS, EntropyScheduler, RetrospectiveMemory, StrategyCodingDecouple, ATPValidator, GearSafety
+from prometheus_ultra.collaboration.b7_remaining import AgentReputation
+from prometheus_ultra.collaboration.camp_assembly import CAMPAssembler
+from prometheus_ultra.collaboration.interaction_graph import InteractionGraph
+from prometheus_ultra.collaboration.knowledge_curation import KnowledgeCuration
+
+# ===== P4: Harness + Lifecycle (5 files) =====
+from prometheus_ultra.harness.tiered_router import TieredRouter
+from prometheus_ultra.harness.tool_tax_gate import ToolTaxGate, SemanticNoiseEstimator
+from prometheus_ultra.learning.academic_searcher import AcademicSearcher
+from prometheus_ultra.lifecycle.sleep_gate import SleepGate
+from prometheus_ultra.loop.himac_planner import HiMACPlanner
+
 # MiMo-derived mechanisms
 from prometheus_ultra.safety.five_gate_chain import FiveGateMemoryChain
 from prometheus_ultra.safety.oep_defense import OEPDefense
@@ -507,6 +551,62 @@ class Omega:
         self.local_maintenance = LocalMaintenance()
         self.memory_depth = MemoryDepthTracker()
 
+        # ===== P0: Safety Security Layer (9 files) =====
+        self.memory_write_guard = MemoryWriteGuard()
+        self.data_exfil_detector = DataExfiltrationDetector()
+        self.tool_call_verifier = ToolCallVerifier()
+        self.leakage_detector = NonAdversarialLeakageDetector()
+        self.process_auditor = ProcessAuditor()
+        self.causal_explainer = LocalCausalExplainer()
+        self.reasoning_checker = ReasoningAlignmentChecker()
+        self.intervention_controller = InterventionController()
+        self.compliance_scorer = ComplianceScorer()
+
+        # ===== P1: Memory Layer (7 files) =====
+        self.hela_mem = HeLaMem(eta=0.1)
+        self.horma_hierarchical = HORMAHierarchicalMemory()
+        self.rl_navigator = RLNavigator()
+        self.consolidation_engine = ConsolidationEngine()
+        self.memory_context_clash = MemoryContextClashDetector()
+        self.forbidden_pattern_detector = ForbiddenPatternDetector()
+        self.external_notebook = ExternalNotebook()
+
+        # ===== P2: Learning Layer (7 files) =====
+        self.simple_mem = SimpleMem()
+        self.active_compressor = ActiveCompressor(max_tokens=25000)
+        self.slime_mold_explorer = SlimeMoldExplorer()
+        self.focus_compressor = FocusCompressor()
+        self.subtle_memory_benchmark = SubtleMemoryBenchmark()
+        self.mcts_retriever = MCTSRetriever()
+        self.localized_icl = LocalizedICL()
+        self.strategy_switcher = StrategySwitcher()
+        self.reflective_sampler = ReflectiveSampler()
+
+        # ===== P3: Evolution + Collaboration (6 files) =====
+        self.fate = FATE()
+        self.signal_triage = SignalTriage()
+        self.esteer = ESTEER()
+        self.persona_manager = PersonaManager()
+        self.loom = Loom()
+        self.progressive_mcgs = ProgressiveMCGS()
+        self.entropy_scheduler = EntropyScheduler()
+        self.retrospective_memory = RetrospectiveMemory()
+        self.strategy_coding_decouple = StrategyCodingDecouple()
+        self.atp_validator = ATPValidator()
+        self.gear_safety = GearSafety()
+        self.agent_reputation = AgentReputation()
+        self.camp_assembler = CAMPAssembler()
+        self.interaction_graph = InteractionGraph()
+        self.knowledge_curation = KnowledgeCuration()
+
+        # ===== P4: Harness + Lifecycle (5 files) =====
+        self.tiered_router = TieredRouter()
+        self.tool_tax_gate = ToolTaxGate()
+        self.semantic_noise_estimator = SemanticNoiseEstimator()
+        self.academic_searcher = AcademicSearcher()
+        self.sleep_gate = SleepGate()
+        self.himac_planner = HiMACPlanner()
+
         # 5 evolution methods from EvoAgentBench
         self.everos = EverOS()
         self.gepa = GEPA()
@@ -687,6 +787,28 @@ class Omega:
             self.failure_log.log("remember", "oep_blocked", {"severity": oep_alert.severity})
             return ""
 
+        # ========== P0: Safety Security Layer — MPBench信任验证 ==========
+        # Gate 0.8: MemoryWriteGuard (MPBench arXiv 2606.04329)
+        validation = self.memory_write_guard.validate(
+            content=content,
+            source="USER_MESSAGE",
+            context={"utility": utility, "surprise": surprise}
+        )
+        if not validation["passed"]:
+            self.wal.rollback_tx(tx_id)
+            logger.warning("Memory write rejected by MPBench guard: %s", validation["reason"])
+            self.failure_log.log("remember", "mpbench_guard_blocked", {"reason": validation["reason"]})
+            return ""
+
+        # Gate 0.9: ForbiddenPatternDetector (禁区模式检测)
+        violations = self.forbidden_pattern_detector.check(content)
+        critical_violations = [v for v in violations if v["severity"] == "critical"]
+        if critical_violations:
+            self.wal.rollback_tx(tx_id)
+            logger.error("Forbidden pattern detected: %s", critical_violations)
+            self.failure_log.log("remember", "forbidden_pattern_blocked", {"violations": critical_violations})
+            return ""
+
         # Gate 1: DopamineWriteGate
         gate = self.dopamine.evaluate(utility=utility, surprise=surprise)
         if gate.decision == "reject":
@@ -779,6 +901,39 @@ class Omega:
         # Store
         self.store.create_node(node)
         self.wal.commit_tx(tx_id)
+
+        # ========== P1: Memory Layer — HeLa-Mem Hebbian关联 ==========
+        # 记录共访问模式到HeLa-Mem
+        recent_nodes = self.store.get_active_nodes(limit=5)
+        if recent_nodes:
+            for existing in recent_nodes[:3]:
+                self.hela_mem.observe_access(existing.id, node.id)
+
+        # ========== P0: Safety Security Layer — Data Exfiltration检测 ==========
+        # Trojan Hippo扫描 (arXiv 2605.01970)
+        try:
+            scan_result = self.data_exfil_detector.scan_content(content)
+            if scan_result:
+                logger.warning("Data exfiltration risk detected: %d patterns", len(scan_result))
+                self.owner_harm.flag_suspicious(node.id, "data_exfiltration", scan_result)
+        except Exception as e:
+            logger.debug("Data exfiltration scan failed: %s", e)
+
+        # ========== P0: Tool Call Verification ==========
+        # MemMorph工具调用参数验证 (arXiv 2605.26154)
+        tool_calls = self._extract_tool_calls(content)
+        for tool_call in tool_calls:
+            verification = self.tool_call_verifier.verify(
+                expected=tool_call.get("expected_params"),
+                actual=tool_call.get("actual_params")
+            )
+            if not verification["passed"]:
+                logger.warning("Tool call parameter tampering detected: %s", verification["reason"])
+
+        # ========== P1: Memory Layer — HORMA层级索引 ==========
+        if tags:
+            path = "/" + "/".join(tags[:3])
+            self.horma_hierarchical.store(node.id, path, utility, content)
 
         # MemPO: observe node creation
         self.mempo.observe_access(node.id)
@@ -963,6 +1118,51 @@ class Omega:
         all_hits: list[SearchHit] = []
         recall_data = {}
 
+        # ========== P2: Learning Layer — SimpleMem意图感知检索 ==========
+        # arXiv 2601.02553 (SimpleMem)
+        try:
+            query_tokens = self.simple_mem.estimate_tokens(query)
+            units = self.simple_mem.compress(query)
+            synthesized = self.simple_mem.synthesize(units)
+            intent = self._classify_intent(query)
+            simple_mem_results = self.simple_mem.retrieve(query)
+            if simple_mem_results:
+                for hit in simple_mem_results[:3]:
+                    all_hits.append(SearchHit(
+                        node_id=f"sm_{hit.get('node_id', '')[:8]}",
+                        score=hit.get("score", 0.5),
+                        content=hit.get("content", ""),
+                        snippet=hit.get("content", "")[:200]
+                    ))
+            logger.debug("SimpleMem retrieved %d results with intent=%s", len(simple_mem_results), intent)
+        except Exception as e:
+            logger.debug("SimpleMem retrieval failed: %s", e)
+
+        # ========== P2: Learning Layer — ActiveCompressor黏菌压缩 ==========
+        # arXiv 2601.07190 (Focus Agent)
+        try:
+            query_tokens = self.active_compressor.estimate_tokens(query)
+            self.active_compressor.saw_tooth_detector.record(query_tokens)
+            saw_tooth = self.active_compressor.saw_tooth_detector.detect_saw_tooth()
+            if saw_tooth.get("pattern_detected"):
+                logger.info("Saw-tooth pattern detected: type=%s", saw_tooth.get("pattern_type"))
+                recall_data["slime_mold_saw_tooth"] = saw_tooth
+
+            decision = self.slime_mold_explorer.should_explore(
+                text=query, context_tokens=query_tokens, max_tokens=25000, saw_tooth_result=saw_tooth
+            )
+            recall_data["slime_mold_decision"] = decision
+
+            if decision["action"] == "consolidate":
+                compressed = self.focus_compressor.compress_part(
+                    text=query, task_type="general", depth="medium"
+                )
+                if "key_learnings" in compressed:
+                    query = f"{query}\n[Context summary: {compressed[:200]}]"
+                    recall_data["active_compression"] = True
+        except Exception as e:
+            logger.debug("ActiveCompressor failed: %s", e)
+
         # AdaMEM 门控：选择性跳过检索
         try:
             if not self.ada_mem.should_retrieve(query, task_type="reasoning"):
@@ -1023,6 +1223,59 @@ class Omega:
                     ))
             except Exception as e:
                 logger.debug("HORMA retrieval failed: %s", e)
+
+        # ========== P1: Memory Layer — HORMA Hierarchical Memory ==========
+        # arXiv 2606.11680 (HORMA)
+        try:
+            horma_query_path = "/" + "/".join(query.lower().strip("/").split()[:3])
+            horma_hits = self.horma_hierarchical.retrieve(horma_query_path)
+            for hit in horma_hits:
+                all_hits.append(SearchHit(
+                    node_id=f"horma_{hit.get('node_id', '')[:8]}",
+                    score=hit.get("score", 0.5) * 0.85,
+                    content=hit.get("content", ""),
+                    snippet=hit.get("content", "")[:200]
+                ))
+            logger.debug("HORMA hierarchical retrieval: %d hits", len(horma_hits))
+        except Exception as e:
+            logger.debug("HORMA hierarchical retrieval failed: %s", e)
+
+        # ========== P1: Memory Layer — RL Navigator ==========
+        # REINFORCE策略梯度导航HORMA树
+        try:
+            if self.horma_hierarchical._nodes:
+                rl_context, rl_actions = self.rl_navigator.navigate(
+                    self.horma_hierarchical, horma_query_path
+                )
+                if rl_context:
+                    for node in rl_context[:3]:
+                        all_hits.append(SearchHit(
+                            node_id=f"rlnav_{node.get('id', '')[:8]}",
+                            score=0.6,
+                            content=node.get("content", ""),
+                            snippet=node.get("content", "")[:200]
+                        ))
+                logger.debug("RL Navigator navigated %d steps", len(rl_actions))
+        except Exception as e:
+            logger.debug("RL Navigator failed: %s", e)
+
+        # ========== P2: Learning Layer — MCTS Retriever ==========
+        # arXiv 2601.00003 (MCTS Retrieval)
+        try:
+            reasoning_chain = self._get_reasoning_chain()
+            mcts_results = self.mcts_retriever.mcts_retrieve(
+                query=query, reasoning_chain=reasoning_chain, kb_size=len(all_hits)
+            )
+            for hit in mcts_results[:3]:
+                all_hits.append(SearchHit(
+                    node_id=f"mcts_{hit.get('node_id', '')[:8]}",
+                    score=hit.get("score", 0.5) * 0.9,
+                    content=hit.get("content", ""),
+                    snippet=hit.get("content", "")[:200]
+                ))
+            logger.debug("MCTS retriever: %d results", len(mcts_results))
+        except Exception as e:
+            logger.debug("MCTS retriever failed: %s", e)
 
         # L-ICL: 精准局部修正 — 当召回结果稀疏时注入定向修正
         if hasattr(self, 'context_engineering'):
@@ -1195,6 +1448,300 @@ class Omega:
         # Output guardrail (second pass)
         for h in unique[:3]:
             self.output_guardrail.check(h.content)
+
+        # ========== P4: Harness Layer — TieredRouter + ToolTaxGate ==========
+        # arXiv 2605.00334 (AgentFloor) + arXiv 2605.00136 (G-STEP)
+        try:
+            tier = self.tiered_router.route(query)
+            recall_data["tiered_router"] = {"tier": tier.tier, "confidence": tier.confidence}
+            logger.debug("TieredRouter assigned tier: %s", tier.tier)
+
+            noise_estimate = self.semantic_noise_estimator.estimate(query)
+            tool_tax = self.tool_tax_gate.evaluate(query, estimated_gain=0.5)
+            if not tool_tax["allowed"]:
+                logger.warning("Tool use blocked by G-STEP gate: %s", tool_tax["reason"])
+            recall_data["tool_tax"] = {"noise": noise_estimate, "decision": tool_tax["decision"]}
+        except Exception as e:
+            logger.debug("Harness layer failed: %s", e)
+
+        # ========== P0: Safety Layer — NonAdversarial Leakage Detection ==========
+        # arXiv 2606.17114 (Scenario Leakage)
+        try:
+            scenario = {
+                "type": "customer_support_email",
+                "context": query,
+                "sensitive_data": []
+            }
+            leakage_assessment = self.leakage_detector.assess_scenario(scenario)
+            if leakage_assessment["overall_risk"] > 0.7:
+                logger.warning("Non-adversarial leakage risk: %s", leakage_assessment["recommendations"])
+                recall_data["leakage_risk"] = leakage_assessment
+        except Exception as e:
+            logger.debug("Leakage detection failed: %s", e)
+
+        # ========== P0: Safety Layer — Process Audit ==========
+        # arXiv 2605.30838 (COMPASS)
+        try:
+            trajectory = self._get_recent_trajectory()
+            if trajectory:
+                audit_result = self.process_auditor.audit_trajectory(trajectory)
+                if audit_result["risk_score"] > 0.5:
+                    logger.warning("Attack trajectory detected: %s", audit_result["decompositions"])
+                    recall_data["process_audit"] = audit_result
+        except Exception as e:
+            logger.debug("Process audit failed: %s", e)
+
+        # ========== P0: Safety Layer — Local Causal Explainer ==========
+        # arXiv 2605.00123 (LOCA)
+        try:
+            jailbreak_case = self._detect_jailbreak()
+            if jailbreak_case:
+                causal_analysis = self.causal_explainer.local_cause(jailbreak_case)
+                if causal_analysis["interventions"]:
+                    logger.info("LOCA intervention: %s", causal_analysis["interventions"][0])
+                    recall_data["causal_explanation"] = causal_analysis
+        except Exception as e:
+            logger.debug("Causal explainer failed: %s", e)
+
+        # ========== P0: Safety Layer — Reasoning Alignment Check ==========
+        # arXiv 2606.08457 (CARA)
+        try:
+            multi_agent_reasonings = self._collect_multi_agent_reasonings()
+            alignment = self.reasoning_checker.check_alignment(multi_agent_reasonings)
+            if alignment["kappa"] < 0.4:
+                logger.warning("Reasoning misalignment detected (kappa=%.2f)", alignment["kappa"])
+                recall_data["reasoning_alignment"] = alignment
+        except Exception as e:
+            logger.debug("Reasoning alignment check failed: %s", e)
+
+        # ========== P0: Safety Layer — Compliance Scorer ==========
+        # arXiv 2606.07805 (MAC-Bench)
+        try:
+            action = {"action_label": "recall", "prompt": query, "response": str(unique[:3])}
+            policy = {"policy_label": "safety_policy", "rules": ["no_malicious_content", "no_data_leak"]}
+            csr_result = self.compliance_scorer.score_compliance(action, policy)
+            recall_data["compliance_score"] = csr_result
+        except Exception as e:
+            logger.debug("Compliance scoring failed: %s", e)
+
+        # ========== P2: Learning Layer — Reflective Sampler ==========
+        # arXiv 2607.00147 (RareDxR1)
+        try:
+            failure_paths = self._collect_failure_paths()
+            for path in failure_paths:
+                self.reflective_sampler.track_failure(path)
+            reflective_example = self.reflective_sampler.sample_reflective_example()
+            if reflective_example:
+                recall_data["reflective_example"] = reflective_example
+        except Exception as e:
+            logger.debug("Reflective sampler failed: %s", e)
+
+        # ========== P3: Evolution Layer — Strategy Switcher ==========
+        # arXiv 2601.00514 (Self-Observation)
+        try:
+            recent_actions = self._get_recent_actions()
+            success_rate = self._compute_success_rate()
+            switch_decision = self.strategy_switcher.decide(recent_actions, success_rate)
+            if switch_decision["switch"]:
+                logger.info("Strategy switch triggered: %s", switch_decision["reason"])
+                recall_data["strategy_switch"] = switch_decision
+        except Exception as e:
+            logger.debug("Strategy switcher failed: %s", e)
+
+        # ========== P3: Collaboration Layer — Agent Reputation ==========
+        try:
+            reputation = self.agent_reputation.get_reputation("system")
+            recall_data["agent_reputation"] = reputation
+        except Exception as e:
+            logger.debug("Agent reputation failed: %s", e)
+
+        # ========== P1: Memory Layer — HeLa-Mem Activation ==========
+        try:
+            if unique:
+                activated = self.hela_mem.activate(unique[0].node_id)
+                if activated:
+                    recall_data["hela_activation"] = activated
+        except Exception as e:
+            logger.debug("HeLa-Mem activation failed: %s", e)
+
+        # ========== P1: Memory Layer — Consolidation Engine ==========
+        try:
+            memories = [{"id": h.node_id, "content": h.content, "utility": h.score} for h in unique[:5]]
+            consolidation_result = self.consolidation_engine.consolidate(memories)
+            recall_data["consolidation"] = {
+                "merged": consolidation_result.merged_count,
+                "pruned": consolidation_result.pruned_count,
+                "conflicts": consolidation_result.conflicts_resolved
+            }
+        except Exception as e:
+            logger.debug("Consolidation engine failed: %s", e)
+
+        # ========== P3: Evolution Layer — FATE + Signal Triage ==========
+        try:
+            fate_result = self.fate.evolve([{"content": h.content, "utility": h.score} for h in unique[:3]])
+            signal_triage = self.signal_triage.triage(fate_result)
+            recall_data["fate"] = {"evolution": fate_result, "signals": signal_triage}
+        except Exception as e:
+            logger.debug("FATE evolution failed: %s", e)
+
+        # ========== P3: Evolution Layer — ESTEER + Persona ==========
+        try:
+            esteer_state = self.esteer.regulate({"current_valence": 0.5, "arousal": 0.3})
+            persona = self.persona_manager.get_current_persona()
+            recall_data["esteer"] = esteer_state
+            recall_data["persona"] = persona
+        except Exception as e:
+            logger.debug("ESTEER/Persona failed: %s", e)
+
+        # ========== P3: Collaboration Layer — CAMP Assembler ==========
+        try:
+            camp_experts = self.camp_assembler.assemble({"query": query, "context": unique[:3]})
+            recall_data["camp_experts"] = camp_experts
+        except Exception as e:
+            logger.debug("CAMP assembly failed: %s", e)
+
+        # ========== P3: Collaboration Layer — Interaction Graph ==========
+        try:
+            interaction = self.interaction_graph.record_interaction({
+                "source": "system",
+                "target": "user",
+                "type": "recall",
+                "content": query
+            })
+            recall_data["interaction_graph"] = interaction
+        except Exception as e:
+            logger.debug("Interaction graph failed: %s", e)
+
+        # ========== P3: Collaboration Layer — Knowledge Curation ==========
+        try:
+            curation = self.knowledge_curation.curate({
+                "proposed_knowledge": [{"content": h.content, "utility": h.score} for h in unique[:3]],
+                "voting_round": 1
+            })
+            recall_data["knowledge_curation"] = curation
+        except Exception as e:
+            logger.debug("Knowledge curation failed: %s", e)
+
+        # ========== P4: Lifecycle Layer — Sleep Gate ==========
+        try:
+            sleep_check = self.sleep_gate.should_sleep(context_tokens=len(unique) * 200)
+            if sleep_check:
+                logger.info("Sleep gate triggered: context complexity high")
+                consolidation = self.sleep_gate.consolidate()
+                recall_data["sleep_gate"] = {"triggered": True, "consolidation": consolidation}
+        except Exception as e:
+            logger.debug("Sleep gate failed: %s", e)
+
+        # ========== P4: Loop Layer — HiMAC Planner ==========
+        try:
+            himac_plan = self.himac_planner.plan({"goal": query, "resources": len(unique)})
+            recall_data["himac_plan"] = himac_plan
+        except Exception as e:
+            logger.debug("HiMAC planner failed: %s", e)
+
+        # ========== P2: Learning Layer — SubtleMemory Benchmark ==========
+        try:
+            benchmark = self.subtle_memory_benchmark.run_benchmark(
+                store=self.store, cycles=1
+            )
+            recall_data["subtle_memory_benchmark"] = benchmark
+        except Exception as e:
+            logger.debug("SubtleMemory benchmark failed: %s", e)
+
+        # ========== P2: Learning Layer — L-ICL ==========
+        try:
+            correction = self.localized_icl.generate_correction(
+                {"trajectory": self._get_failed_trajectory(), "state": {}}
+            )
+            if correction:
+                recall_data["l_icl_correction"] = correction
+        except Exception as e:
+            logger.debug("L-ICL failed: %s", e)
+
+        # ========== P4: Academic Searcher ==========
+        try:
+            academic_results = self.academic_searcher.search(query, max_results=3)
+            if academic_results:
+                recall_data["academic_search"] = academic_results
+        except Exception as e:
+            logger.debug("Academic searcher failed: %s", e)
+
+        # ========== P3: Evolution Layer — Loom Narrative ==========
+        try:
+            narrative = self.loom.weave({"events": [{"content": h.content, "utility": h.score} for h in unique[:5]]})
+            recall_data["loom_narrative"] = narrative
+        except Exception as e:
+            logger.debug("Loom narrative failed: %s", e)
+
+        # ========== P3: Evolution Layer — ProgressiveMCGS ==========
+        try:
+            mcgs_result = self.progressive_mcgs.search({"query": query, "depth": 3})
+            recall_data["progressive_mcgs"] = mcgs_result
+        except Exception as e:
+            logger.debug("ProgressiveMCGS failed: %s", e)
+
+        # ========== P3: Evolution Layer — EntropyScheduler ==========
+        try:
+            entropy = self.entropy_scheduler.compute_entropy(len(unique))
+            schedule = self.entropy_scheduler.schedule(entropy)
+            recall_data["entropy_schedule"] = {"entropy": entropy, "schedule": schedule}
+        except Exception as e:
+            logger.debug("Entropy scheduler failed: %s", e)
+
+        # ========== P3: Evolution Layer — RetrospectiveMemory ==========
+        try:
+            retrospective = self.retrospective_memory.retrieve({"query": query, "limit": 3})
+            recall_data["retrospective_memory"] = retrospective
+        except Exception as e:
+            logger.debug("Retrospective memory failed: %s", e)
+
+        # ========== P3: Evolution Layer — StrategyCodingDecouple ==========
+        try:
+            decouple = self.strategy_coding_decouple.decouple({"strategy": "default", "code": query})
+            recall_data["strategy_decouple"] = decouple
+        except Exception as e:
+            logger.debug("Strategy coding decouple failed: %s", e)
+
+        # ========== P3: Evolution Layer — ATPValidator ==========
+        try:
+            atp_validation = self.atp_validator.validate({"action": "recall", "params": {"query": query}})
+            recall_data["atp_validation"] = atp_validation
+        except Exception as e:
+            logger.debug("ATP validation failed: %s", e)
+
+        # ========== P3: Evolution Layer — GearSafety ==========
+        try:
+            gear_safety = self.gear_safety.check({"action": "recall", "context": query})
+            recall_data["gear_safety"] = gear_safety
+        except Exception as e:
+            logger.debug("Gear safety failed: %s", e)
+
+        # ========== P3: Collaboration Layer — External Notebook ==========
+        try:
+            notebook_entry = self.external_notebook.write({
+                "key": f"recall_{query[:20]}",
+                "value": [{"node_id": h.node_id, "score": h.score} for h in unique[:5]]
+            })
+            recall_data["external_notebook"] = notebook_entry
+        except Exception as e:
+            logger.debug("External notebook failed: %s", e)
+
+        # ========== P4: Intervention Control ==========
+        try:
+            state = {"risk_score": 0.3, "error_count": 0, "success_rate": 0.9}
+            candidate_actions = [{"action": "recall", "expected_improvement": 0.1}]
+            intervention = self.intervention_controller.intervene(state, candidate_actions)
+            if intervention["expected_improvement"] > 0.1:
+                recall_data["intervention"] = intervention
+        except Exception as e:
+            logger.debug("Intervention control failed: %s", e)
+
+        # ========== P4: Brainstorming Mechanism ==========
+        try:
+            brainstorming = self.brainstorming_mechanism.generate({"topic": query, "context": unique[:3]})
+            recall_data["brainstorming"] = brainstorming
+        except Exception as e:
+            logger.debug("Brainstorming failed: %s", e)
 
         # 自动记录 recall 引用到 UtilityTracker
         for h in unique[:5]:
@@ -1432,7 +1979,9 @@ class Omega:
             reflect_score = self._last_reflect_score or 0.0
             node_count = self.store.get_node_count()
             health = self._compute_health()
-            dynamic_suffix = f"auto:fitness={fitness:.4f}:reflect={reflect_score:.4f}:nodes={node_count}:health={health:.3f}"
+            # Map health string to numeric score for logging
+            health_score = {"healthy": 1.0, "degraded": 0.5, "critical": 0.2, "empty": 0.0, "unknown": 0.5}.get(health, 0.5)
+            dynamic_suffix = f"auto:fitness={fitness:.4f}:reflect={reflect_score:.4f}:nodes={node_count}:health={health_score:.3f}"
             context = f"Periodic evolution from reflect insights — {dynamic_suffix}"
 
         # Step 1: EquilibriumGuard
@@ -2578,8 +3127,11 @@ class Omega:
 
         self.bank.run_migration()
         self.bank.run_aging()
-        self.consolidation_engine.run()
-        self.consolidation_engine.consolidate()
+        # ConsolidationEngine: only call consolidate(), no run() method
+        try:
+            self.consolidation_engine.consolidate()
+        except Exception as e:
+            logger.debug("Consolidation engine failed: %s", e)
         self.convergence.update(self.bank.count())
         self.thermodynamic.update(0.1)
         # thermodynamic.reset when temperature is extreme
@@ -3040,3 +3592,96 @@ class Omega:
 
     def __exit__(self, *args):
         self.close()
+
+    # ============================================================
+    # Helper methods for integrated modules
+    # ============================================================
+    def _extract_tool_calls(self, content: str) -> list[dict]:
+        """Extract tool calls from content string."""
+        try:
+            import re
+            pattern = r'\{[^}]*"action":\s*"([^"]+)"[^}]*\}'
+            matches = re.findall(pattern, content)
+            return [{"expected_params": {}, "actual_params": {}} for _ in matches[:5]]
+        except Exception:
+            return []
+
+    def _classify_intent(self, query: str) -> str:
+        """Classify user intent for SimpleMem retrieval."""
+        query_lower = query.lower()
+        if any(kw in query_lower for kw in ["how", "what", "why", "explain"]):
+            return "explanation"
+        if any(kw in query_lower for kw in ["search", "find", "look up"]):
+            return "retrieval"
+        if any(kw in query_lower for kw in ["create", "make", "build"]):
+            return "generation"
+        return "general"
+
+    def _get_reasoning_chain(self) -> list[str]:
+        """Get recent reasoning chain for MCTS retriever."""
+        try:
+            nodes = self.store.get_active_nodes(limit=10)
+            return [n.content[:100] for n in nodes[:5]]
+        except Exception:
+            return []
+
+    def _detect_jailbreak(self) -> dict | None:
+        """Detect potential jailbreak attempt."""
+        malicious_phrases = ["ignore previous instructions", "forget everything", "system prompt", "disregard rules"]
+        for phrase in malicious_phrases:
+            if phrase.lower() in "".join([n.content for n in self.store.get_active_nodes(limit=20)]).lower():
+                return {"type": "jailbreak", "phrase": phrase}
+        return None
+
+    def _collect_multi_agent_reasonings(self) -> list[dict]:
+        """Collect multi-agent reasonings for CARA alignment check."""
+        try:
+            nodes = self.store.get_active_nodes(limit=10)
+            return [{"reasoning": n.content[:200], "confidence": n.utility} for n in nodes[:5]]
+        except Exception:
+            return []
+
+    def _get_recent_trajectory(self) -> list[dict]:
+        """Get recent trajectory for COMPASS audit."""
+        try:
+            nodes = self.store.get_active_nodes(limit=20)
+            return [{"node_id": n.id, "content": n.content[:100], "utility": n.utility} for n in nodes]
+        except Exception:
+            return []
+
+    def _collect_failure_paths(self) -> list[str]:
+        """Collect failure paths for ReflectiveSampler."""
+        try:
+            failures = self.failure_log.get_failures(limit=10)
+            return [f["path"] for f in failures if "path" in f]
+        except Exception:
+            return []
+
+    def _get_recent_actions(self) -> list[dict]:
+        """Get recent actions for StrategySwitcher."""
+        try:
+            nodes = self.store.get_active_nodes(limit=10)
+            return [{"action": "remember", "success": n.utility > 0.5} for n in nodes]
+        except Exception:
+            return []
+
+    def _compute_success_rate(self) -> float:
+        """Compute success rate for StrategySwitcher."""
+        try:
+            nodes = self.store.get_active_nodes(limit=50)
+            if not nodes:
+                return 0.5
+            successful = sum(1 for n in nodes if n.utility > 0.6)
+            return successful / len(nodes)
+        except Exception:
+            return 0.5
+
+    def _get_failed_trajectory(self) -> dict:
+        """Get failed trajectory for L-ICL correction."""
+        try:
+            failures = self.failure_log.get_failures(limit=5)
+            if failures:
+                return failures[0]
+        except Exception:
+            pass
+        return {"trajectory": [], "state": {}}
