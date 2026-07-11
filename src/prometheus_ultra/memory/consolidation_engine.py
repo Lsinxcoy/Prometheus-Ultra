@@ -78,7 +78,7 @@ class ConsolidationEngine:
             for g in groups
         ]
         
-        # 阶段2: 合并���似记忆
+        # 阶段2: 合并相似记忆
         kept: list[dict] = []
         for group in groups:
             if len(group) == 1:
@@ -98,6 +98,26 @@ class ConsolidationEngine:
         # 阶段4: 清理低重要性记忆
         before_count = len(conflicts)
         conflicts = [m for m in conflicts if m["importance"] >= self.min_importance]
+        result.pruned_count = before_count - len(conflicts)
+        
+        # 清空缓冲区
+        self._buffer = []
+        
+        result.duration_ms = (time.time() - start) * 1000
+        self._history.append(result)
+        return result
+
+    def run(self, memories: list[dict] | None = None) -> dict:
+        """运行整合（兼容API）。"""
+        result = self.consolidate(memories)
+        return {
+            "status": "success",
+            "merged": result.merged_count,
+            "pruned": result.pruned_count,
+            "promoted": result.promoted_count,
+            "conflicts_resolved": result.conflicts_resolved,
+            "duration_ms": result.duration_ms,
+        }
         result.pruned_count = before_count - len(conflicts)
         result.promoted_count = len(conflicts)
         

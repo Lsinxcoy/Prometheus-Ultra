@@ -116,6 +116,45 @@ class TelemetryPipeline:
         logger.info("TelemetryPipeline subscribed to %d pipe events",
                      len(self._PIPE_SCHEMAS))
 
+    def record(self, metric: str, value: float) -> None:
+        """记录指标（兼容API）。"""
+        # 将metric解析为管道名和信号名
+        parts = metric.split(".", 1)
+        pipe = parts[0] if len(parts) > 0 else "unknown"
+        signal = parts[1] if len(parts) > 1 else "value"
+        
+        if pipe in self._history:
+            snapshot = SignalSnapshot(
+                pipeline=pipe,
+                timestamp=time.time(),
+                signals={signal: value},
+                source="manual_record"
+            )
+            self._history[pipe].append(snapshot)
+            # 限制窗口大小
+            if len(self._history[pipe]) > self._max_window:
+                self._history[pipe] = self._history[pipe][-self._max_window:]
+
+    def query(self, pipe: str, window: int = 1) -> list[dict]:
+        """查询管道信号历史。"""
+        if pipe not in self._history:
+            return []
+        return [{"signals": s.signals, "timestamp": s.timestamp} 
+                for s in self._history[pipe][-window:]]
+
+    def get_health(self) -> dict:
+        """获取系统健康状态。"""
+        health = {"status": "healthy", "metrics": []}
+        for pipe, history in self._history.items():
+            if history:
+                latest = history[-1]
+                health["metrics"].append({
+                    "pipe": pipe,
+                    "signals": latest.signals,
+                    "timestamp": latest.timestamp
+                })
+        return health
+
     def _on_event(self, event: dict) -> None:
         """收到事件 → 提取信号 → 存储。"""
         try:

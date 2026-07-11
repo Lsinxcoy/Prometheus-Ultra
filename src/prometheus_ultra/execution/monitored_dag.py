@@ -180,3 +180,15 @@ class MonitoredDAG:
             "success_rate": total_completed / max(total_completed + total_failed, 1),
             "avg_duration_ms": sum(r.total_duration_ms for r in self._reports) / len(self._reports),
         }
+
+    def execute_monitored(self, nodes: list[dict]) -> dict:
+        """执行监控的DAG（兼容API）。"""
+        report = self.execute(nodes)
+        return {
+            "status": "success",
+            "completed": report.completed,
+            "failed": report.failed,
+            "duration_ms": report.total_duration_ms,
+            "throughput": report.throughput_nodes_per_sec,
+            "bottleneck": report.bottleneck_node,
+        }

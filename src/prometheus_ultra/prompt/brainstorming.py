@@ -177,6 +177,21 @@ class BrainstormingPrompt:
         return {
             "sessions": len(self._history),
             "total_ideas": total_ideas,
+            "avg_per_session": total_ideas / max(len(self._history), 1),
             "avg_score": (sum(h["avg_score"] for h in self._history) / len(self._history)) if self._history else 0,
             "idea_bank_size": len(self._idea_bank),
         }
+
+    def brainstorm(self, problem: str, num_ideas: int = 5) -> list[dict]:
+        """生成创意想法（兼容API）。"""
+        ideas = []
+        for i in range(num_ideas):
+            idea = self._generate_idea(problem, i)
+            ideas.append({
+                "content": idea.content,
+                "category": idea.category,
+                "novelty": idea.novelty,
+                "feasibility": idea.feasibility,
+                "id": idea.id,
+            })
+        return ideas

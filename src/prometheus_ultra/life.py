@@ -213,6 +213,11 @@ from prometheus_ultra.safety.reasoning_alignment import ReasoningAlignmentChecke
 from prometheus_ultra.safety.intervention_control import InterventionController
 from prometheus_ultra.safety.compliance_scorer import ComplianceScorer
 
+# ===== P0 Extended: Sleeper + Domain Audit + Fuzz Testing =====
+from prometheus_ultra.safety.trigger_detector import TriggerDetector
+from prometheus_ultra.safety.finetune_audit import FineTuneAudit
+from prometheus_ultra.safety.fuzz_tester import FuzzTester
+
 # ===== P1: Memory Layer (7 files) =====
 from prometheus_ultra.memory.hela_mem import HeLaMem
 from prometheus_ultra.memory.hierarchical_memory import HierarchicalMemory as HORMAHierarchicalMemory
@@ -242,9 +247,31 @@ from prometheus_ultra.collaboration.knowledge_curation import KnowledgeCuration
 # ===== P4: Harness + Lifecycle (5 files) =====
 from prometheus_ultra.harness.tiered_router import TieredRouter
 from prometheus_ultra.harness.tool_tax_gate import ToolTaxGate, SemanticNoiseEstimator
-from prometheus_ultra.learning.academic_searcher import AcademicSearcher
 from prometheus_ultra.lifecycle.sleep_gate import SleepGate
 from prometheus_ultra.loop.himac_planner import HiMACPlanner
+from prometheus_ultra.learning.academic_searcher import AcademicSearcher
+
+# ===== P1 Extended: CNS Orchestrator + Signal Fusion =====
+from prometheus_ultra.lifecycle.cns_orchestrator import CNSOrchestrator
+from prometheus_ultra.lifecycle.signal_fusion import SignalFusionLayer
+from prometheus_ultra.lifecycle.cerebral_cortex import CerebralCortex
+from prometheus_ultra.lifecycle.autonomic_regulator import AutonomicRegulator
+from prometheus_ultra.lifecycle.telemetry_pipeline import TelemetryPipeline
+
+# ===== P2 Extended: DAG Execution =====
+from prometheus_ultra.execution.dag_executor import DAGExecutor
+from prometheus_ultra.execution.monitored_dag import MonitoredDAG
+from prometheus_ultra.execution.retryable_dag import RetryableDAG
+
+# ===== P3 Extended: Learning Gates =====
+from prometheus_ultra.learning.ada_mem_gate import AdaMEMGate
+from prometheus_ultra.learning.knowledge_scanner import KnowledgeScanner
+from prometheus_ultra.learning.self_observation import SelfObservation
+from prometheus_ultra.learning.paper_fetch_mcp import PaperFetchClient
+
+# ===== P4 Extended: Memory + Prompt =====
+from prometheus_ultra.memory.multi_hop import MultiHopRetriever
+from prometheus_ultra.prompt.brainstorming import BrainstormingPrompt
 
 # MiMo-derived mechanisms
 from prometheus_ultra.safety.five_gate_chain import FiveGateMemoryChain
@@ -374,11 +401,40 @@ class Omega:
         # Will be wired up after Loop mechanisms are initialized
 
         # ===== Learning (5) =====
-        self.knowledge_scanner = KnowledgeScanner()
-        self.curiosity_queue = CuriosityQueue()
-        self.utility_tracker = UtilityTracker()
-        self.five_step = FiveStepEvolution(omega=self)
-        self.retrofit = DeepRetrofit(omega=self)
+        try:
+            from prometheus_ultra.learning.knowledge_scanner import KnowledgeScanner
+            self.knowledge_scanner = KnowledgeScanner()
+        except Exception as e:
+            logger.warning("Failed to load KnowledgeScanner: %s", str(e)[:50])
+            self.knowledge_scanner = None
+
+        try:
+            from prometheus_ultra.learning.curiosity_queue import CuriosityQueue
+            self.curiosity_queue = CuriosityQueue()
+        except Exception as e:
+            logger.warning("Failed to load CuriosityQueue: %s", str(e)[:50])
+            self.curiosity_queue = None
+
+        try:
+            from prometheus_ultra.learning.utility_tracker import UtilityTracker
+            self.utility_tracker = UtilityTracker()
+        except Exception as e:
+            logger.warning("Failed to load UtilityTracker: %s", str(e)[:50])
+            self.utility_tracker = None
+
+        try:
+            from prometheus_ultra.learning.five_step import FiveStepEvolution
+            self.five_step = FiveStepEvolution(omega=self)
+        except Exception as e:
+            logger.warning("Failed to load FiveStepEvolution: %s", str(e)[:50])
+            self.five_step = None
+
+        try:
+            from prometheus_ultra.learning.deep_retrofit import DeepRetrofit
+            self.retrofit = DeepRetrofit(omega=self)
+        except Exception as e:
+            logger.warning("Failed to load DeepRetrofit: %s", str(e)[:50])
+            self.retrofit = None
 
         # ===== Evaluation (5) =====
         self.five_view = FiveViewEvaluator()
@@ -442,10 +498,33 @@ class Omega:
         self.edre = EDREReplicator()
 
         # ===== Execution (4) =====
-        self.dag_executor = DAGExecutor()
-        self.parallel_dag = ParallelDAG()
-        self.retryable_dag = RetryableDAG()
-        self.monitored_dag = MonitoredDAG()
+        try:
+            from prometheus_ultra.execution.dag_executor import DAGExecutor
+            self.dag_executor = DAGExecutor()
+        except Exception as e:
+            logger.warning("Failed to load DAGExecutor: %s", str(e)[:50])
+            self.dag_executor = None
+
+        try:
+            from prometheus_ultra.execution.parallel_dag import ParallelDAG
+            self.parallel_dag = ParallelDAG()
+        except Exception as e:
+            logger.warning("Failed to load ParallelDAG: %s", str(e)[:50])
+            self.parallel_dag = None
+
+        try:
+            from prometheus_ultra.execution.retryable_dag import RetryableDAG, RetryConfig
+            self.retryable_dag = RetryableDAG(RetryConfig(max_retries=3))
+        except Exception as e:
+            logger.warning("Failed to load RetryableDAG: %s", str(e)[:50])
+            self.retryable_dag = None
+
+        try:
+            from prometheus_ultra.execution.monitored_dag import MonitoredDAG
+            self.monitored_dag = MonitoredDAG()
+        except Exception as e:
+            logger.warning("Failed to load MonitoredDAG: %s", str(e)[:50])
+            self.monitored_dag = None
 
         # ===== Governance (2) =====
         self.confidence_gate = ConfidenceGate()
@@ -562,6 +641,9 @@ class Omega:
         self.intervention_controller = InterventionController()
         self.compliance_scorer = ComplianceScorer()
 
+        # ===== P0 Extended: Sleeper + Domain Audit + Fuzz Testing =====
+        # Initialized later with try-except for graceful degradation
+
         # ===== P1: Memory Layer (7 files) =====
         self.hela_mem = HeLaMem(eta=0.1)
         self.horma_hierarchical = HORMAHierarchicalMemory()
@@ -606,6 +688,75 @@ class Omega:
         self.academic_searcher = AcademicSearcher()
         self.sleep_gate = SleepGate()
         self.himac_planner = HiMACPlanner()
+
+        # ===== P1 Extended: CNS Orchestrator + Signal Fusion =====
+        # Initialized later with proper event bus subscription
+
+        # ===== P2 Extended: DAG Execution =====
+        try:
+            from prometheus_ultra.execution.dag_executor import DAGExecutor
+            self.dag_executor = DAGExecutor()
+        except Exception as e:
+            logger.warning("Failed to load DAGExecutor: %s", str(e)[:50])
+            self.dag_executor = None
+
+        try:
+            from prometheus_ultra.execution.monitored_dag import MonitoredDAG
+            self.monitored_dag = MonitoredDAG(self.dag_executor) if self.dag_executor else None
+        except Exception as e:
+            logger.warning("Failed to load MonitoredDAG: %s", str(e)[:50])
+            self.monitored_dag = None
+
+        try:
+            from prometheus_ultra.execution.retryable_dag import RetryableDAG, RetryConfig
+            self.retryable_dag = RetryableDAG(self.dag_executor, RetryConfig(max_retries=3)) if self.dag_executor else None
+        except Exception as e:
+            logger.warning("Failed to load RetryableDAG: %s", str(e)[:50])
+            self.retryable_dag = None
+
+        # ===== P3 Extended: Learning Gates =====
+        try:
+            from prometheus_ultra.learning.ada_mem_gate import AdaMEMGate
+            self.ada_mem_gate = AdaMEMGate()
+        except Exception as e:
+            logger.warning("Failed to load AdaMEMGate: %s", str(e)[:50])
+            self.ada_mem_gate = None
+
+        try:
+            from prometheus_ultra.learning.knowledge_scanner import KnowledgeScanner
+            self.knowledge_scanner = KnowledgeScanner()
+        except Exception as e:
+            logger.warning("Failed to load KnowledgeScanner: %s", str(e)[:50])
+            self.knowledge_scanner = None
+
+        try:
+            from prometheus_ultra.learning.self_observation import SelfObservation
+            self.self_observation = SelfObservation()
+        except Exception as e:
+            logger.warning("Failed to load SelfObservation: %s", str(e)[:50])
+            self.self_observation = None
+
+        try:
+            from prometheus_ultra.learning.paper_fetch_mcp import PaperFetchClient
+            self.paper_fetcher = PaperFetchClient()
+        except Exception as e:
+            logger.warning("Failed to load PaperFetchClient: %s", str(e)[:50])
+            self.paper_fetcher = None
+
+        # ===== P4 Extended: Memory + Prompt =====
+        try:
+            from prometheus_ultra.memory.multi_hop import MultiHopRetriever
+            self.multi_hop = MultiHopRetriever()
+        except Exception as e:
+            logger.warning("Failed to load MultiHopRetriever: %s", str(e)[:50])
+            self.multi_hop = None
+
+        try:
+            from prometheus_ultra.prompt.brainstorming import BrainstormingPrompt
+            self.brainstorming = BrainstormingPrompt()
+        except Exception as e:
+            logger.warning("Failed to load BrainstormingPrompt: %s", str(e)[:50])
+            self.brainstorming = None
 
         # 5 evolution methods from EvoAgentBench
         self.everos = EverOS()
@@ -671,13 +822,65 @@ class Omega:
         self.signal_fusion = SignalFusionLayer(self)
         self.signal_fusion.subscribe(self.event_bus)
 
+        # ===== P1 Extended: CNS Orchestrator + Lifecycle =====
+        try:
+            from prometheus_ultra.lifecycle.cns_orchestrator import CNSOrchestrator
+            self.cns_orchestrator = CNSOrchestrator(omega=self)
+            self.cns_orchestrator.subscribe(self.event_bus)
+            logger.info("CNSOrchestrator loaded and subscribed successfully")
+        except Exception as e:
+            logger.warning("Failed to load CNSOrchestrator: %s, running without orchestration", str(e)[:50])
+            self.cns_orchestrator = None
+
+        try:
+            from prometheus_ultra.lifecycle.cerebral_cortex import CerebralCortex
+            self.cerebral_cortex = CerebralCortex()
+            logger.info("CerebralCortex loaded successfully")
+        except Exception as e:
+            logger.warning("Failed to load CerebralCortex: %s", str(e)[:50])
+            self.cerebral_cortex = None
+
+        try:
+            from prometheus_ultra.lifecycle.autonomic_regulator import AutonomicRegulator
+            self.autonomic_regulator = AutonomicRegulator()
+            logger.info("AutonomicRegulator loaded successfully")
+        except Exception as e:
+            logger.warning("Failed to load AutonomicRegulator: %s", str(e)[:50])
+            self.autonomic_regulator = None
+
+        try:
+            from prometheus_ultra.lifecycle.telemetry_pipeline import TelemetryPipeline
+            self.telemetry = TelemetryPipeline(self)
+            self.telemetry.subscribe(self.event_bus)
+            logger.info("TelemetryPipeline loaded and subscribed successfully")
+        except Exception as e:
+            logger.warning("Failed to load TelemetryPipeline: %s", str(e)[:50])
+            self.telemetry = None
+
         # B1: Memory security detectors (paper-based)
         try:
             from prometheus_ultra.safety.trigger_detector import TriggerDetector
             self.trigger_detector = TriggerDetector()
-        except Exception:
-            logger.warning("Failed to load TriggerDetector, running without detector")
+            logger.info("TriggerDetector loaded successfully")
+        except Exception as e:
+            logger.warning("Failed to load TriggerDetector: %s, running without detector", str(e)[:50])
             self.trigger_detector = None
+
+        try:
+            from prometheus_ultra.safety.finetune_audit import FineTuneAudit
+            self.finetune_audit = FineTuneAudit()
+            logger.info("FineTuneAudit loaded successfully")
+        except Exception as e:
+            logger.warning("Failed to load FineTuneAudit: %s, running without audit", str(e)[:50])
+            self.finetune_audit = None
+
+        try:
+            from prometheus_ultra.safety.fuzz_tester import FuzzTester
+            self.fuzz_tester = FuzzTester()
+            logger.info("FuzzTester loaded successfully")
+        except Exception as e:
+            logger.warning("Failed to load FuzzTester: %s, running without fuzz testing", str(e)[:50])
+            self.fuzz_tester = None
 
         # 知识翻译：监听 knowledge_added → 轻量 fitness 检查
         # _last_kta_fitness
@@ -809,7 +1012,19 @@ class Omega:
             self.failure_log.log("remember", "forbidden_pattern_blocked", {"violations": critical_violations})
             return ""
 
-        # Gate 1: DopamineWriteGate
+        # ========== P0: Safety Security Layer — Sleeper Memory Poisoning检测 ==========
+        # Gate 1.0: TriggerDetector (arXiv 2605.15338 Sleeper)
+        try:
+            scan_result = self.trigger_detector.scan(content)
+            if scan_result.get("found"):
+                self.wal.rollback_tx(tx_id)
+                logger.warning("Sleeper attack pattern detected: %s", scan_result.get("patterns", []))
+                self.failure_log.log("remember", "sleeper_poisoning_blocked", {"patterns": scan_result.get("patterns", [])})
+                return ""
+        except Exception as e:
+            logger.debug("Trigger detector failed: %s", e)
+
+        # ===== 原有逻辑 =====
         gate = self.dopamine.evaluate(utility=utility, surprise=surprise)
         if gate.decision == "reject":
             self.wal.rollback_tx(tx_id)
@@ -1165,7 +1380,7 @@ class Omega:
 
         # AdaMEM 门控：选择性跳过检索
         try:
-            if not self.ada_mem.should_retrieve(query, task_type="reasoning"):
+            if not self.ada_mem_gate.should_retrieve(query, task_type="reasoning"):
                 return SearchResults(hits=[], total_count=0, query=query, duration_ms=0, metadata=recall_data)
         except Exception as e:
             logger.warning("AdaMEM should_retrieve check failed: %s", e)
@@ -1631,6 +1846,23 @@ class Omega:
                 recall_data["sleep_gate"] = {"triggered": True, "consolidation": consolidation}
         except Exception as e:
             logger.debug("Sleep gate failed: %s", e)
+
+        # ========== P4 Extended: Multi-Hop Reasoning ==========
+        try:
+            if unique:
+                # MultiHopRetriever API: retrieve(query) -> list[dict]
+                extended = self.multi_hop.retrieve(unique[0].content[:50])
+                if extended:
+                    for ext in extended:
+                        if ext not in all_hits:
+                            all_hits.append(SearchHit(
+                                node_id=ext.get("id", ""),
+                                score=ext.get("score", 0.5),
+                                content=ext.get("content", ""),
+                            ))
+                    recall_data["multi_hop_extended"] = len(extended)
+        except Exception as e:
+            logger.debug("Multi-hop reasoning failed: %s", e)
 
         # ========== P4: Loop Layer — HiMAC Planner ==========
         try:
@@ -2952,6 +3184,35 @@ class Omega:
             "drift_count": len(drift),
             "converged": fv.composite_score > 0.5,
         })
+
+        # ========== P1: Self-Observation + FineTuneAudit ==========
+        try:
+            # SelfObservation: 记录反思行为模式
+            recent_actions = self._get_recent_actions()
+            for action in recent_actions[:3]:
+                self.self_observation.observe(action["action"], action.get("outcome", "unknown"))
+            improvements = self.self_observation.get_improvements()
+            if improvements:
+                reflect_diagnostics["self_observation_improvements"] = improvements
+        except Exception as e:
+            logger.debug("Self-observation failed: %s", e)
+
+        try:
+            # FineTuneAudit: 定期域级错位评估（仅在节点数>100时运行）
+            if self.store.get_node_count() > 100:
+                domain_evals = []
+                for domain in ["code", "medical", "legal", "finance"]:
+                    eval_result = self.finetune_audit.evaluate_domain(domain, context[:200])
+                    if eval_result.get("misalignment_score", 0) > 0.5:
+                        domain_evals.append({
+                            "domain": domain,
+                            "score": eval_result["misalignment_score"],
+                            "risk": "high"
+                        })
+                if domain_evals:
+                    reflect_diagnostics["domain_misalignment_alerts"] = domain_evals
+        except Exception as e:
+            logger.debug("FineTune audit failed: %s", e)
 
         return reflect_result
 

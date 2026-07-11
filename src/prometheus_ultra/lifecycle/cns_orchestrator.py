@@ -318,6 +318,10 @@ class CNSOrchestrator:
         except Exception as e:
             logger.warning("CNS._on_learn: %s", e)
 
+    def on_learn_completed(self, event: dict) -> None:
+        """公开API：learn管道完成事件处理。"""
+        self._on_learn(event)
+
     def _on_reflect(self, event: dict) -> None:
         """reflect 完成后 → 根据分数决定方向：低分 evolve，高分 dream。"""
         try:
