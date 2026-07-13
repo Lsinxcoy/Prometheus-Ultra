@@ -1876,7 +1876,7 @@ class Omega:
 
         # ========== P4: Brainstorming Mechanism ==========
         try:
-            brainstorming = self.brainstorming_mechanism.generate({"topic": query, "context": unique[:3]})
+            brainstorming = self.brainstorming.generate({"topic": query, "context": unique[:3]})
             recall_data["brainstorming"] = brainstorming
         except Exception as e:
             logger.debug("Brainstorming failed: %s", e)

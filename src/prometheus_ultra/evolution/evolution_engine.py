@@ -109,7 +109,7 @@ class SelectionMethod(Enum):
     ROULETTE = "roulette"
     RANK = "rank"
     TRUNCATION = "truncation"
-    STOHASTIC_UNIVERSAL = "sus"
+    STOCHASTIC_UNIVERSAL = "sus"
 
 
 # === Layer 4: Mutation ===
@@ -300,7 +300,7 @@ class SelectionEngine:
             return SelectionEngine._rank(population)
         elif method == SelectionMethod.TRUNCATION:
             return SelectionEngine._truncation(population, truncation_ratio)
-        elif method == SelectionMethod.STOHASTIC_UNIVERSAL:
+        elif method == SelectionMethod.STOCHASTIC_UNIVERSAL:
             return SelectionEngine._sus(population)
         else:
             return SelectionEngine._tournament(population, tournament_size)

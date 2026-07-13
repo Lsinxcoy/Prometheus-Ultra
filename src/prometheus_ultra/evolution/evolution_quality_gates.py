@@ -168,7 +168,8 @@ class EvolutionQualityGates:
                 check.result = GateResult.PASS
                 check.message = f"适应度稳定: {improvement:.3f}"
         
-        check.score = 0.8  # 默认
+        if check.score == 0:
+            check.score = 0.8  # 默认
         return check
     
     def _check_reliability(self, result: dict) -> GateCheck:

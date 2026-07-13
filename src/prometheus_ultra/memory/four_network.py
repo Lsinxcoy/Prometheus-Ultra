@@ -426,7 +426,7 @@ class FourNetworkMemory:
 
                 # Check if one uses negation words and the other doesn't
                 # on the same topic
-                common = words_a & words_b - negation_markers
+                common = (words_a & words_b) - negation_markers
                 if len(common) >= 3:
                     has_neg_a = bool(words_a & negation_markers)
                     has_neg_b = bool(words_b & negation_markers)

@@ -23,10 +23,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
-import math
-import time
 from collections import Counter
+import math
 
 
 class KnowledgeBridge:
@@ -202,5 +200,3 @@ class KnowledgeBridge:
             "domain_bridge_counts": dict(self._bridge_counts),
         }
 
-
-import re

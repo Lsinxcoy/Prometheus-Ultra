@@ -710,7 +710,8 @@ class MemPO:
             for i, adv in enumerate(advantages):
                 utility_delta = max(-1.0, min(1.0, adv * 0.5))
                 # Apply as reinforcement if a node_id was previously tracked
-                pass  # Node-specific updates happen via observe_reinforcement
+                if i < len(self._node_ids):
+                    self.update_utility(self._node_ids[i], utility_delta)
 
             # Track GRPO metrics
             self._grpo_step_count += 1

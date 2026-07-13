@@ -21,7 +21,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any
+from typing import Any, Dict
 
 
 def generate_uuidv7() -> str:
