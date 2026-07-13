@@ -625,7 +625,7 @@ class EvolutionEngine:
                  population_size: int = 50, max_generations: int = 100,
                  elite_count: int = 2, mutation_rate: float = 0.1,
                  mutation_strength: float = 0.1, crossover_rate: float = 0.7,
-                 tournament_size: int = 3, fitness_threshold: float = 0.99,
+                 tournament_size: int = 3, fitness_threshold: float = 0.85,  # Was 0.99 - allow more evolution
                  stagnation_limit: int = 20, evaluate_fn: Optional[Callable] = None):
         """Initialize evolution engine.
 

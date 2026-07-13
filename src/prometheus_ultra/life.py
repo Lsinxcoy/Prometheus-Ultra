@@ -43,7 +43,7 @@ from prometheus_ultra.memory.shmr import SHMRGenerator
 from prometheus_ultra.memory.trajectory import TrajectoryStore
 from prometheus_ultra.memory.disposition import DispositionLearner
 from prometheus_ultra.memory.hebbian import HebbianMemory
-from prometheus_ultra.memory.hierarchical import HierarchicalMemory  # HORMA层级记忆
+from prometheus_ultra.memory.hierarchical_memory import HierarchicalMemory  # HORMA层级记忆
 from prometheus_ultra.memory.stream import MemoryStream
 from prometheus_ultra.memory.dual_storage import DualPathwayMemory
 from prometheus_ultra.memory.mempo import MemPO
@@ -56,7 +56,7 @@ from prometheus_ultra.lifecycle.consolidation import ConsolidationPipeline
 from prometheus_ultra.lifecycle.gravity import MemoryGravity
 from prometheus_ultra.lifecycle.veracity import VeracityBayesian, Evidence
 from prometheus_ultra.lifecycle.dream_cycle import DreamCycle
-from prometheus_ultra.lifecycle.consolidator import ConsolidationEngine
+from prometheus_ultra.memory.consolidation_engine import ConsolidationEngine
 from prometheus_ultra.lifecycle.convergence import ConvergenceDetector
 from prometheus_ultra.lifecycle.state_machine import LoopStateMachine
 from prometheus_ultra.lifecycle.thermodynamic import ThermodynamicIntelligence
@@ -128,7 +128,6 @@ from prometheus_ultra.prompt.refiner import SelfRefiner
 
 # Learning
 from prometheus_ultra.learning.scanner import KnowledgeScanner, ScanSource
-from prometheus_ultra.learning.curiosity import CuriosityQueue
 from prometheus_ultra.learning.utility_tracker import UtilityTracker
 from prometheus_ultra.learning.five_step import FiveStepEvolution
 from prometheus_ultra.learning.deep_retrofit import DeepRetrofit
@@ -222,7 +221,6 @@ from prometheus_ultra.safety.fuzz_tester import FuzzTester
 from prometheus_ultra.memory.hela_mem import HeLaMem
 from prometheus_ultra.memory.hierarchical_memory import HierarchicalMemory as HORMAHierarchicalMemory
 from prometheus_ultra.memory.rl_navigator import RLNavigator
-from prometheus_ultra.memory.consolidation_engine import ConsolidationEngine
 from prometheus_ultra.memory.context_clash import ContextClashDetector as MemoryContextClashDetector
 from prometheus_ultra.memory.forbidden_patterns import ForbiddenPatternDetector
 from prometheus_ultra.memory.external_notebook import ExternalNotebook
@@ -259,13 +257,11 @@ from prometheus_ultra.lifecycle.autonomic_regulator import AutonomicRegulator
 from prometheus_ultra.lifecycle.telemetry_pipeline import TelemetryPipeline
 
 # ===== P2 Extended: DAG Execution =====
-from prometheus_ultra.execution.dag_executor import DAGExecutor
-from prometheus_ultra.execution.monitored_dag import MonitoredDAG
-from prometheus_ultra.execution.retryable_dag import RetryableDAG
+from prometheus_ultra.execution.dag_executor import DAGExecutor, MonitoredDAG, RetryableDAG
 
 # ===== P3 Extended: Learning Gates =====
 from prometheus_ultra.learning.ada_mem_gate import AdaMEMGate
-from prometheus_ultra.learning.knowledge_scanner import KnowledgeScanner
+from prometheus_ultra.learning.scanner import KnowledgeScanner, ScanSource
 from prometheus_ultra.learning.self_observation import SelfObservation
 from prometheus_ultra.learning.paper_fetch_mcp import PaperFetchClient
 
@@ -338,7 +334,8 @@ class Omega:
         # ===== Memory (13) =====
         self.hebbian = HebbianMemory()
         self.hierarchical = HierarchicalMemory()  # HORMA层级记忆
-        self.dopamine = DopamineWriteGate(DopamineGateConfig())
+        # Dopamine gate: threshold=0.5 for stricter filtering (was 0.3)
+        self.dopamine = DopamineWriteGate(DopamineGateConfig(threshold=0.5))
         self.search = PolyphonicRetriever()
         self.graph_memory = GraphMemory(hebbian=self.hebbian)
         self.four_network = FourNetworkMemory()
@@ -402,14 +399,14 @@ class Omega:
 
         # ===== Learning (5) =====
         try:
-            from prometheus_ultra.learning.knowledge_scanner import KnowledgeScanner
+            from prometheus_ultra.learning.scanner import KnowledgeScanner, ScanSource
             self.knowledge_scanner = KnowledgeScanner()
         except Exception as e:
             logger.warning("Failed to load KnowledgeScanner: %s", str(e)[:50])
             self.knowledge_scanner = None
 
         try:
-            from prometheus_ultra.learning.curiosity_queue import CuriosityQueue
+            from prometheus_ultra.learning.curiosity import Curiosity as CuriosityQueue
             self.curiosity_queue = CuriosityQueue()
         except Exception as e:
             logger.warning("Failed to load CuriosityQueue: %s", str(e)[:50])
@@ -499,29 +496,28 @@ class Omega:
 
         # ===== Execution (4) =====
         try:
-            from prometheus_ultra.execution.dag_executor import DAGExecutor
+            from prometheus_ultra.execution.dag_executor import DAGExecutor, ParallelDAG
             self.dag_executor = DAGExecutor()
+            self.parallel_dag = ParallelDAG() if self.dag_executor else None
+            logger.info("DEBUG: parallel_dag initialized: %s", self.parallel_dag)
         except Exception as e:
-            logger.warning("Failed to load DAGExecutor: %s", str(e)[:50])
+            logger.warning("Failed to load DAGExecutor/ParallelDAG: %s", str(e)[:50])
             self.dag_executor = None
-
-        try:
-            from prometheus_ultra.execution.parallel_dag import ParallelDAG
-            self.parallel_dag = ParallelDAG()
-        except Exception as e:
-            logger.warning("Failed to load ParallelDAG: %s", str(e)[:50])
             self.parallel_dag = None
+            logger.info("DEBUG: parallel_dag set to None due to exception")
 
         try:
-            from prometheus_ultra.execution.retryable_dag import RetryableDAG, RetryConfig
-            self.retryable_dag = RetryableDAG(RetryConfig(max_retries=3))
+            from prometheus_ultra.execution.dag_executor import RetryableDAG
+            self.retryable_dag = RetryableDAG(max_retries=3)
+            logger.info("DEBUG: retryable_dag initialized: %s", self.retryable_dag)
         except Exception as e:
             logger.warning("Failed to load RetryableDAG: %s", str(e)[:50])
             self.retryable_dag = None
+            logger.info("DEBUG: retryable_dag set to None due to exception")
 
         try:
-            from prometheus_ultra.execution.monitored_dag import MonitoredDAG
-            self.monitored_dag = MonitoredDAG()
+            from prometheus_ultra.execution.dag_executor import MonitoredDAG
+            self.monitored_dag = MonitoredDAG() if self.dag_executor else None
         except Exception as e:
             logger.warning("Failed to load MonitoredDAG: %s", str(e)[:50])
             self.monitored_dag = None
@@ -648,7 +644,7 @@ class Omega:
         self.hela_mem = HeLaMem(eta=0.1)
         self.horma_hierarchical = HORMAHierarchicalMemory()
         self.rl_navigator = RLNavigator()
-        self.consolidation_engine = ConsolidationEngine()
+        # self.consolidation_engine already initialized above
         self.memory_context_clash = MemoryContextClashDetector()
         self.forbidden_pattern_detector = ForbiddenPatternDetector()
         self.external_notebook = ExternalNotebook()
@@ -692,71 +688,12 @@ class Omega:
         # ===== P1 Extended: CNS Orchestrator + Signal Fusion =====
         # Initialized later with proper event bus subscription
 
-        # ===== P2 Extended: DAG Execution =====
-        try:
-            from prometheus_ultra.execution.dag_executor import DAGExecutor
-            self.dag_executor = DAGExecutor()
-        except Exception as e:
-            logger.warning("Failed to load DAGExecutor: %s", str(e)[:50])
-            self.dag_executor = None
-
-        try:
-            from prometheus_ultra.execution.monitored_dag import MonitoredDAG
-            self.monitored_dag = MonitoredDAG(self.dag_executor) if self.dag_executor else None
-        except Exception as e:
-            logger.warning("Failed to load MonitoredDAG: %s", str(e)[:50])
-            self.monitored_dag = None
-
-        try:
-            from prometheus_ultra.execution.retryable_dag import RetryableDAG, RetryConfig
-            self.retryable_dag = RetryableDAG(self.dag_executor, RetryConfig(max_retries=3)) if self.dag_executor else None
-        except Exception as e:
-            logger.warning("Failed to load RetryableDAG: %s", str(e)[:50])
-            self.retryable_dag = None
-
         # ===== P3 Extended: Learning Gates =====
-        try:
-            from prometheus_ultra.learning.ada_mem_gate import AdaMEMGate
-            self.ada_mem_gate = AdaMEMGate()
-        except Exception as e:
-            logger.warning("Failed to load AdaMEMGate: %s", str(e)[:50])
-            self.ada_mem_gate = None
-
-        try:
-            from prometheus_ultra.learning.knowledge_scanner import KnowledgeScanner
-            self.knowledge_scanner = KnowledgeScanner()
-        except Exception as e:
-            logger.warning("Failed to load KnowledgeScanner: %s", str(e)[:50])
-            self.knowledge_scanner = None
-
-        try:
-            from prometheus_ultra.learning.self_observation import SelfObservation
-            self.self_observation = SelfObservation()
-        except Exception as e:
-            logger.warning("Failed to load SelfObservation: %s", str(e)[:50])
-            self.self_observation = None
-
-        try:
-            from prometheus_ultra.learning.paper_fetch_mcp import PaperFetchClient
-            self.paper_fetcher = PaperFetchClient()
-        except Exception as e:
-            logger.warning("Failed to load PaperFetchClient: %s", str(e)[:50])
-            self.paper_fetcher = None
+        # Note: ada_mem_gate, knowledge_scanner, self_observation, paper_fetcher
+        # are already initialized above. No need to re-initialize.
 
         # ===== P4 Extended: Memory + Prompt =====
-        try:
-            from prometheus_ultra.memory.multi_hop import MultiHopRetriever
-            self.multi_hop = MultiHopRetriever()
-        except Exception as e:
-            logger.warning("Failed to load MultiHopRetriever: %s", str(e)[:50])
-            self.multi_hop = None
-
-        try:
-            from prometheus_ultra.prompt.brainstorming import BrainstormingPrompt
-            self.brainstorming = BrainstormingPrompt()
-        except Exception as e:
-            logger.warning("Failed to load BrainstormingPrompt: %s", str(e)[:50])
-            self.brainstorming = None
+        # Note: multi_hop, brainstorming are already initialized above.
 
         # 5 evolution methods from EvoAgentBench
         self.everos = EverOS()
@@ -823,39 +760,8 @@ class Omega:
         self.signal_fusion.subscribe(self.event_bus)
 
         # ===== P1 Extended: CNS Orchestrator + Lifecycle =====
-        try:
-            from prometheus_ultra.lifecycle.cns_orchestrator import CNSOrchestrator
-            self.cns_orchestrator = CNSOrchestrator(omega=self)
-            self.cns_orchestrator.subscribe(self.event_bus)
-            logger.info("CNSOrchestrator loaded and subscribed successfully")
-        except Exception as e:
-            logger.warning("Failed to load CNSOrchestrator: %s, running without orchestration", str(e)[:50])
-            self.cns_orchestrator = None
-
-        try:
-            from prometheus_ultra.lifecycle.cerebral_cortex import CerebralCortex
-            self.cerebral_cortex = CerebralCortex()
-            logger.info("CerebralCortex loaded successfully")
-        except Exception as e:
-            logger.warning("Failed to load CerebralCortex: %s", str(e)[:50])
-            self.cerebral_cortex = None
-
-        try:
-            from prometheus_ultra.lifecycle.autonomic_regulator import AutonomicRegulator
-            self.autonomic_regulator = AutonomicRegulator()
-            logger.info("AutonomicRegulator loaded successfully")
-        except Exception as e:
-            logger.warning("Failed to load AutonomicRegulator: %s", str(e)[:50])
-            self.autonomic_regulator = None
-
-        try:
-            from prometheus_ultra.lifecycle.telemetry_pipeline import TelemetryPipeline
-            self.telemetry = TelemetryPipeline(self)
-            self.telemetry.subscribe(self.event_bus)
-            logger.info("TelemetryPipeline loaded and subscribed successfully")
-        except Exception as e:
-            logger.warning("Failed to load TelemetryPipeline: %s", str(e)[:50])
-            self.telemetry = None
+        # Note: cns_orchestrator, cerebral_cortex, autonomic_regulator, telemetry
+        # are already initialized above with proper args.
 
         # B1: Memory security detectors (paper-based)
         try:
@@ -1181,8 +1087,8 @@ class Omega:
         self.graph_memory.add_episode(EpisodeEvent(episode_id=node.id, content=content,
                                                    tags=set(tags), importance=utility))
 
-        # FourNetwork
-        self.four_network.retain(content, network="experience")
+        # FourNetwork (auto-classify based on content)
+        self.four_network.retain(content, network=None)
 
         # Bank
         self.bank.store(content, tier=Tier.WORKING, importance=utility)
@@ -2160,7 +2066,7 @@ class Omega:
 
         # Stage 0: Brainstorming — Socratic design refinement (Superpowers)
         brainstorm_result = self.brainstorming.brainstorm(
-            topic=context or "auto-evolution", context="evolve pipeline"
+            topic=context or "auto-evolution"
         )
 
         # PlanWriter: generate implementation plan from brainstorming (Superpowers)
@@ -2665,13 +2571,19 @@ class Omega:
             if node_id:
                 new_nodes.append(node_id)
 
-        # Step 4: CuriosityQueue
-        for r in results:
-            self.curiosity_queue.add(f"What is {r.title}?", priority=5)
+        # Step 4: CuriosityQueue (带 None 安全检查)
+        if self.curiosity_queue is not None:
+            for r in results:
+                self.curiosity_queue.add(f"What is {r.title}?", priority=5)
+        else:
+            logger.debug("learn: curiosity_queue not initialized, skipping")
 
-        # Step 5: UtilityTracker
-        for node_id in new_nodes:
-            self.utility_tracker.register(node_id)
+        # Step 5: UtilityTracker (带 None 安全检查)
+        if self.utility_tracker is not None:
+            for node_id in new_nodes:
+                self.utility_tracker.register(node_id)
+        else:
+            logger.debug("learn: utility_tracker not initialized, skipping")
 
         self.skill_registry.register(type("Skill", (), {"name": f"learn_{source}_{query}"})())
         self.curator.evaluate(type("Skill", (), {"name": f"learn_{source}_{query}", "content": query})())
@@ -2732,8 +2644,13 @@ class Omega:
             # 降低效用 (initially 0.7 from remember call)
             utility_val = 0.56  # 0.7 * 0.8
 
-        # Curiosity queue deep
-        curiosity_item = self.curiosity_queue.pop()
+        # Curiosity queue deep (带 None 安全检查)
+        if self.curiosity_queue is not None:
+            curiosity_item = self.curiosity_queue.pop()
+            learn_diagnostics["curiosity_popped"] = curiosity_item is not None
+        else:
+            logger.debug("learn: curiosity_queue not initialized, skipping pop")
+            curiosity_item = None
 
         # Utility tracker deep
         for node_id in new_nodes[:3]:
@@ -2779,9 +2696,13 @@ class Omega:
         self.exploration_quota.record_round()
         self.explorer_state.record_round(query, source, 0.5)
 
-        # Auto-fill curiosity queue if low
-        if self.curiosity_queue._queue and len(self.curiosity_queue._queue) < 3:
-            self.curiosity_autofill.auto_fill(count=2)
+        # Auto-fill curiosity queue if low (带 None 安全检查)
+        if self.curiosity_queue is not None and hasattr(self.curiosity_queue, '_queue'):
+            if self.curiosity_queue._queue and len(self.curiosity_queue._queue) < 3:
+                if self.curiosity_autofill is not None:
+                    self.curiosity_autofill.auto_fill(count=2)
+        else:
+            logger.debug("learn: curiosity_queue or autofill not initialized")
 
         # DeepRetrofit6: trigger deep learning when knowledge is acquired
         if len(new_nodes) > 0:
@@ -3393,7 +3314,9 @@ class Omega:
             self.consolidation_engine.consolidate()
         except Exception as e:
             logger.debug("Consolidation engine failed: %s", e)
-        self.convergence.update(self.bank.count())
+        # FIX: Don't feed bank.count() into convergence history — it's an integer (bank tier count)
+        # that corrupts the float-based convergence detection (scores ~0.65-0.71).
+        # Bank count is already tracked via self.bank and reported in maintain diagnostics.
         self.thermodynamic.update(0.1)
         # thermodynamic.reset when temperature is extreme
         stats = self.thermodynamic.get_stats()
@@ -3566,25 +3489,53 @@ class Omega:
         # Convergence deep
         maintain_data['convergence_history'] = self.convergence.get_history()
 
-        # DAG executor deep
-        self.dag_executor.add_node("maintain_task")
-        maintain_data['dag_validate'] = self.dag_executor.validate()
-        maintain_data['dag_execute'] = self.dag_executor.execute()
-        maintain_data['dag_state_summary'] = self.dag_executor.get_state_summary()
+        # DAG executor deep (带 None 安全检查)
+        if self.dag_executor is not None:
+            self.dag_executor.add_node("maintain_task")
+            maintain_data['dag_validate'] = self.dag_executor.validate()
+            maintain_data['dag_execute'] = self.dag_executor.execute()
+            maintain_data['dag_state_summary'] = self.dag_executor.get_state_summary()
+        else:
+            maintain_data['dag_validate'] = {"error": "dag_executor not initialized"}
+            maintain_data['dag_execute'] = {"error": "dag_executor not initialized"}
+            maintain_data['dag_state_summary'] = {"error": "dag_executor not initialized"}
 
-        # Monitored DAG deep
+        # Monitored DAG deep (带 None 安全检查)
         try:
-            maintain_data['monitored_dag_execute'] = self.monitored_dag.execute_monitored([])
+            if self.monitored_dag is not None:
+                maintain_data['monitored_dag_execute'] = self.monitored_dag.execute_monitored([])
+                maintain_data['monitored_dag_latency'] = self.monitored_dag.get_latency_stats()
+            else:
+                maintain_data['monitored_dag_execute'] = {"error": "monitored_dag not initialized"}
+                maintain_data['monitored_dag_latency'] = {"avg_ms": 0, "p50_ms": 0, "p99_ms": 0}
         except Exception as e:
             logger.debug("MonitoredDAG execution failed: %s", e)
             maintain_data['monitored_dag_execute'] = None
-        maintain_data['monitored_dag_latency'] = self.monitored_dag.get_latency_stats()
+            maintain_data['monitored_dag_latency'] = {"avg_ms": 0, "p50_ms": 0, "p99_ms": 0}
 
-        # Parallel DAG deep
-        maintain_data['parallel_dag_execute'] = self.parallel_dag.execute_parallel()
+        # Parallel DAG deep (带 None 安全检查)
+        try:
+            if self.parallel_dag is not None:
+                maintain_data['parallel_dag_execute'] = self.parallel_dag.execute_parallel()
+            else:
+                maintain_data['parallel_dag_execute'] = {"error": "parallel_dag not initialized"}
+        except Exception as e:
+            logger.debug("ParallelDAG execution failed: %s", e)
+            maintain_data['parallel_dag_execute'] = None
 
-        # Retryable DAG deep
-        maintain_data['retryable_dag_execute'] = self.retryable_dag.execute_with_retry(failure_rate=0.0)
+        # Retryable DAG deep (带 None 安全检查)
+        try:
+            if self.retryable_dag is not None:
+                # 兼容新旧 API: 新类用 execute(), 旧类用 execute_with_retry()
+                if hasattr(self.retryable_dag, 'execute') and not hasattr(self.retryable_dag, 'execute_with_retry'):
+                    maintain_data['retryable_dag_execute'] = self.retryable_dag.execute({"nodes": {}, "edges": []})
+                else:
+                    maintain_data['retryable_dag_execute'] = self.retryable_dag.execute_with_retry(failure_rate=0.0)
+            else:
+                maintain_data['retryable_dag_execute'] = {"error": "retryable_dag not initialized"}
+        except Exception as e:
+            logger.debug("RetryableDAG execution failed: %s", e)
+            maintain_data['retryable_dag_execute'] = None
 
         # Trajectory deep operations
         maintain_data['traj_action_summary'] = self.trajectory.get_action_summary()
@@ -3770,6 +3721,35 @@ class Omega:
     # Status & Fitness
     # ============================================================
     def status(self) -> SystemStatus:
+        """获取系统状态（带 None 安全检查）。"""
+        details = {}
+        
+        # 安全获取各组件状态，避免 None 错误
+        components = [
+            ("bank", "bank.count"),
+            ("convergence", "convergence.is_converged"),
+            ("dopamine", "dopamine.get_stats"),
+            ("five_gates", "five_gates.get_stats"),
+            ("constitution", "constitution.get_stats"),
+            ("graph_memory", "graph_memory.get_stats"),
+            ("four_network", "four_network.get_stats"),
+            ("utility_tracker", "utility_tracker.get_stats"),
+            ("curiosity_queue", "curiosity_queue.get_stats"),
+            ("knowledge_scanner", "knowledge_scanner.get_stats"),
+            ("mars", "mars.get_stats"),
+            ("evolution_engine", "evolution_engine.get_stats"),
+        ]
+        
+        for name, method in components:
+            try:
+                comp = getattr(self, name, None)
+                if comp is not None and hasattr(comp, method.split('.')[-1]):
+                    details[name] = getattr(comp, method.split('.')[-1])()
+                else:
+                    details[name] = {"error": f"{name} not initialized or missing method"}
+            except Exception as e:
+                details[name] = {"error": str(e)[:50]}
+        
         return SystemStatus(
             node_count=self.store.get_node_count(),
             edge_count=self.store.get_edge_count(),
@@ -3778,20 +3758,7 @@ class Omega:
             health=self._compute_health(),
             version="1.0.0",
             mechanisms=127,
-            details={
-                "bank_count": self.bank.count(),
-                "convergence": self.convergence.is_converged(),
-                "dopamine": self.dopamine.get_stats(),
-                "five_gates": self.five_gates.get_stats(),
-                "constitution": self.constitution.get_stats(),
-                "graph_memory": self.graph_memory.get_stats(),
-                "four_network": self.four_network.get_stats(),
-                "utility_tracker": self.utility_tracker.get_stats(),
-                "curiosity_queue": self.curiosity_queue.get_stats(),
-                "knowledge_scanner": self.knowledge_scanner.get_stats(),
-                "mars": self.mars.get_stats(),
-                "evolution_engine": self.evolution_engine.get_stats(),
-            },
+            details=details,
         )
 
     def _compute_fitness(self) -> float:

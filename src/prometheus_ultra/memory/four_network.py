@@ -44,7 +44,8 @@ class FourNetworkMemory:
         "procedural": {"how", "step", "process", "method", "technique", "algorithm",
                        "procedure", "protocol", "approach", "strategy", "workflow"},
         "episodic": {"where", "location", "context", "situation", "episode", "story",
-                     "scene", "setting", "circumstance", "scenario", "incident"},
+                     "scene", "setting", "circumstance", "scenario", "incident",
+                     "in", "at", "on", "from", "to", "into"},
     }
 
     def __init__(self, max_entries_per_network: int = 1000, recency_decay: float = 0.95):
@@ -65,9 +66,17 @@ class FourNetworkMemory:
         self._plans: list[dict] = []
         self._last_reflection_time = 0.0
 
-    def retain(self, content: str, network: str = "experience",
+    def retain(self, content: str, network: str | None = None,
                tags: list[str] | None = None, importance: float = 0.5) -> bool:
-        """Retain a memory in a specific network."""
+        """Retain a memory in a specific network or auto-classify.
+
+        If network is None, auto-classifies based on content keywords.
+        """
+        # Auto-classify if no network specified
+        if network is None:
+            network = self._auto_classify(content)
+            logger.debug("Auto-classified to network: %s", network)
+
         if network not in self._networks:
             return False
 
@@ -88,6 +97,65 @@ class FourNetworkMemory:
 
         self._total_retained += 1
         return True
+
+    def _auto_classify(self, content: str) -> str:
+        """Auto-classify content into the most appropriate network.
+        
+        Enhanced with:
+        1. Stopword filtering
+        2. Weighted scoring (longer keywords weighted higher)
+        3. Minimum overlap threshold
+        
+        Classification rules based on Generative Agents paper:
+        - experience: events that happened, temporal references
+        - semantic: concepts, definitions, categories
+        - procedural: steps, methods, processes
+        - episodic: locations, contexts, situations
+        """
+        content_lower = content.lower()
+        words = set(content_lower.split())
+        
+        # Remove stopwords that appear in all networks
+        common_stopwords = {"the", "a", "an", "is", "was", "were", "are", "be", "been",
+                           "being", "have", "has", "had", "do", "does", "did", "will",
+                           "would", "could", "should", "may", "might", "can", "shall",
+                           "to", "of", "in", "for", "on", "with", "at", "by", "from",
+                           "as", "into", "through", "during", "before", "after", "above",
+                           "below", "between", "about", "up", "out", "off", "over",
+                           "and", "but", "or", "nor", "not", "so", "yet", "both",
+                           "either", "neither", "this", "that", "these", "those",
+                           "very", "just", "too", "also", "only", "more", "most",
+                           "some", "any", "each", "every", "all", "both", "few",
+                           "own", "same", "other", "another", "such", "which", "what",
+                           "who", "whom", "whose", "it", "its", "i", "we", "you",
+                           "he", "she", "they", "me", "him", "her", "us", "them"}
+        
+        filtered_words = words - common_stopwords
+        
+        # Score each network by keyword overlap with weighted scoring
+        scores = {}
+        for net_name, keywords in self.NETWORK_KEYWORDS.items():
+            # Only count non-stopword keywords
+            relevant_keywords = keywords - common_stopwords
+            overlap = filtered_words & relevant_keywords
+            
+            # Weight longer keywords more heavily (they're more specific)
+            weighted_score = 0
+            for word in overlap:
+                # Longer words are more meaningful
+                length_weight = min(len(word) / 5, 1.0)  # Max weight 1.0 for 5+ char words
+                weighted_score += length_weight
+            
+            scores[net_name] = weighted_score
+        
+        # Return network with highest score, default to experience
+        if scores:
+            best_network = max(scores, key=scores.get)
+            # Require minimum score of 1.0 (at least one meaningful keyword match)
+            if scores[best_network] >= 1.0:
+                return best_network
+        
+        return "experience"  # Default fallback
 
     def recall(self, query: str, top_k: int = 5, network: str | None = None) -> list[dict]:
         """Recall with Generative Agents scoring: recency × importance × relevance.
@@ -620,14 +688,17 @@ class FourNetworkMemory:
     # ------------------------------------------------------------------
 
     def get_stats(self) -> dict:
-        return {
+        stats = {
             **{name: len(entries) for name, entries in self._networks.items()},
             "total": self._total_retained,
             "unique_tags": len(self._tag_index),
             "reflections": len(self._reflections),
             "plans": len(self._plans),
-            "last_reflection_age": (
-                round(time.time() - self._last_reflection_time, 1)
-                if self._last_reflection_time else None
-            ),
         }
+        # Fix: last_reflection_age can be None, which breaks sum()
+        last_age = (
+            round(time.time() - self._last_reflection_time, 1)
+            if self._last_reflection_time else 0
+        )
+        stats["last_reflection_age"] = last_age
+        return stats

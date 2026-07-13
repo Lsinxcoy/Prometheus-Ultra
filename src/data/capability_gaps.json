@@ -1,0 +1,14 @@
+[
+  {
+    "area": "safety",
+    "severity": "high",
+    "suggestion": "add_safety_skill",
+    "detected_at": 1783938644.9539573
+  },
+  {
+    "area": "retrieval",
+    "severity": "high",
+    "suggestion": "add_retrieval_skill",
+    "detected_at": 1783938644.9539573
+  }
+]

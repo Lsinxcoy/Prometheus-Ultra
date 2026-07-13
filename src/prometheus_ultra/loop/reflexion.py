@@ -85,7 +85,7 @@ class ReflexionEngine:
         self._max_reflections = max_reflections
 
         self._attempts: list[AttemptRecord] = []
-        self._reflections: list[Reflection] = []
+        self._reflections: list[ReflexionReflection] = []
         self._reflection_memory: list[str] = []
         self._failure_patterns: Counter = Counter()
         self._success_patterns: Counter = Counter()

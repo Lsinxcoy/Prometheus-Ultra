@@ -135,13 +135,6 @@ class TelemetryPipeline:
             if len(self._history[pipe]) > self._max_window:
                 self._history[pipe] = self._history[pipe][-self._max_window:]
 
-    def query(self, pipe: str, window: int = 1) -> list[dict]:
-        """查询管道信号历史。"""
-        if pipe not in self._history:
-            return []
-        return [{"signals": s.signals, "timestamp": s.timestamp} 
-                for s in self._history[pipe][-window:]]
-
     def get_health(self) -> dict:
         """获取系统健康状态。"""
         health = {"status": "healthy", "metrics": []}

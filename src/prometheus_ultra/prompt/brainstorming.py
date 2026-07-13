@@ -185,8 +185,14 @@ class BrainstormingPrompt:
     def brainstorm(self, problem: str, num_ideas: int = 5) -> list[dict]:
         """生成创意想法（兼容API）。"""
         ideas = []
+        # 提取关键词
+        keywords = self._extract_keywords(problem)
+        # 随机选择角度
+        perspectives = random.sample(self.PERSPECTIVES, min(4, len(self.PERSPECTIVES)))
+        
         for i in range(num_ideas):
-            idea = self._generate_idea(problem, i)
+            perspective = perspectives[i % len(perspectives)]
+            idea = self._generate_idea(problem, keywords, perspective, i)
             ideas.append({
                 "content": idea.content,
                 "category": idea.category,

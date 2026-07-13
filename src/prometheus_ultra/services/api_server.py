@@ -111,6 +111,18 @@ class ReportUsageRequest(BaseModel):
     context: str = ""
 
 
+class UpdateNodeRequest(BaseModel):
+    content: str = ""
+    utility: float = -1.0  # -1 means keep current
+
+
+class NodeSearchRequest(BaseModel):
+    query: str = ""
+    tags: list[str] = []
+    min_utility: float = 0.0
+    limit: int = 20
+
+
 class PipelineResponse(BaseModel):
     success: bool
     pipeline: str
@@ -136,6 +148,15 @@ class UltraAPIServer:
         self.port = port
         self.db_path = db_path
         self.app = FastAPI(title="Prometheus Ultra API", version="1.0.0")
+        # CORS for dashboard
+        from fastapi.middleware.cors import CORSMiddleware
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
         self.omega = None
         self._server_thread: Optional[threading.Thread] = None
         self._setup_routes()
@@ -146,6 +167,17 @@ class UltraAPIServer:
         @app.get("/api/v1/health")
         def health():
             return {"status": "healthy", "service": "prometheus-ultra"}
+
+        @app.get("/dashboard")
+        def dashboard():
+            """Serve the neural dashboard HTML."""
+            import os
+            html_path = os.path.join(os.path.dirname(__file__), "dashboard.html")
+            if os.path.exists(html_path):
+                from fastapi.responses import HTMLResponse
+                with open(html_path, 'r', encoding='utf-8') as f:
+                    return HTMLResponse(content=f.read())
+            return {"error": "Dashboard not found"}
 
         @app.get("/api/v1/status")
         def status():
@@ -174,6 +206,13 @@ class UltraAPIServer:
                     utility=req.utility,
                     tags=req.tags,
                 )
+                if not node_id:
+                    return PipelineResponse(
+                        success=False, pipeline="remember",
+                        data={"node_id": ""},
+                        error="remember rejected by pipeline gates (low utility, safety filter, or dopamine threshold)",
+                        duration_ms=(time.time() - t0) * 1000,
+                    )
                 return PipelineResponse(
                     success=True, pipeline="remember",
                     data={"node_id": node_id},
@@ -397,6 +436,135 @@ class UltraAPIServer:
                     error=str(e),
                     duration_ms=(time.time() - t0) * 1000,
                 )
+
+        # ── Node CRUD Endpoints ─────────────────────────────────
+
+        @app.delete("/api/v1/nodes/{node_id}", response_model=PipelineResponse)
+        def delete_node(node_id: str):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                self.omega.store.delete_node(node_id)
+                return PipelineResponse(
+                    success=True, pipeline="delete_node",
+                    data={"node_id": node_id, "deleted": True},
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="delete_node",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        @app.patch("/api/v1/nodes/{node_id}", response_model=PipelineResponse)
+        def update_node(node_id: str, req: UpdateNodeRequest):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                node = self.omega.store.read_node(node_id)
+                if node is None:
+                    return PipelineResponse(
+                        success=False, pipeline="update_node",
+                        error=f"Node {node_id} not found",
+                        duration_ms=(time.time() - t0) * 1000,
+                    )
+                if req.content:
+                    node.content = req.content
+                if req.utility >= 0:
+                    node.utility = req.utility
+                result = self.omega.store.update_node(node)
+                return PipelineResponse(
+                    success=result.success, pipeline="update_node",
+                    data={"node_id": node_id, "updated": result.success},
+                    error=result.reason if not result.success else None,
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="update_node",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        @app.get("/api/v1/nodes/{node_id}", response_model=PipelineResponse)
+        def read_node(node_id: str):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                node = self.omega.store.read_node(node_id)
+                if node is None:
+                    return PipelineResponse(
+                        success=False, pipeline="read_node",
+                        error=f"Node {node_id} not found",
+                        duration_ms=(time.time() - t0) * 1000,
+                    )
+                return PipelineResponse(
+                    success=True, pipeline="read_node",
+                    data=_safe_serialize(node),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="read_node",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        @app.post("/api/v1/nodes/search", response_model=PipelineResponse)
+        def search_nodes(req: NodeSearchRequest):
+            t0 = time.time()
+            try:
+                if not self.omega:
+                    raise HTTPException(status_code=503, detail="Omega not initialized")
+                results = self.omega.store.search(
+                    query=req.query or None,
+                    limit=req.limit,
+                )
+                hits_data = _safe_serialize(results) if results else []
+                return PipelineResponse(
+                    success=True, pipeline="search",
+                    data={"hits": hits_data, "total": len(hits_data) if isinstance(hits_data, list) else 0},
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+            except Exception as e:
+                return PipelineResponse(
+                    success=False, pipeline="search",
+                    error=str(e),
+                    duration_ms=(time.time() - t0) * 1000,
+                )
+
+        # ── Nervous System Endpoints ───────────────────────────
+
+        @app.get("/api/v1/nervous/cns")
+        def nervous_cns():
+            if not self.omega:
+                raise HTTPException(status_code=503, detail="Omega not initialized")
+            try:
+                return _safe_serialize(self.omega.cns.get_state())
+            except Exception as e:
+                return {"error": str(e)}
+
+        @app.get("/api/v1/nervous/cc")
+        def nervous_cc():
+            if not self.omega:
+                raise HTTPException(status_code=503, detail="Omega not initialized")
+            try:
+                return _safe_serialize(self.omega.cerebral_cortex.get_insights())
+            except Exception as e:
+                return {"error": str(e)}
+
+        @app.get("/api/v1/nervous/ar")
+        def nervous_ar():
+            if not self.omega:
+                raise HTTPException(status_code=503, detail="Omega not initialized")
+            try:
+                return _safe_serialize(self.omega.autonomic_regulator.get_stats())
+            except Exception as e:
+                return {"error": str(e)}
 
         @app.on_event("startup")
         def startup():

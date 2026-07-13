@@ -289,3 +289,33 @@ class EvolutionQualityGates:
         """检查步骤是否允许继续 (兼容别名)."""
         # 默认允许继续
         return True, "step allowed"
+
+    def record_step(self, step_id: str, action: str, information_gain: float = 0.0, **kwargs) -> dict:
+        """记录进化步骤（兼容 runner.py API）。
+
+        Args:
+            step_id: 步骤标识符
+            action: 执行的动作描述
+            information_gain: 信息增益分数
+            **kwargs: 额外参数
+
+        Returns:
+            记录结果字典
+        """
+        report = QualityReport(timestamp=time.time())
+        check = GateCheck(
+            name=action,
+            score=min(1.0, max(0.0, information_gain)),
+            result=GateResult.PASS if information_gain > 0.05 else GateResult.WARN,
+            message=f"Step {step_id}: {action}, gain={information_gain:.4f}"
+        )
+        report.checks.append(check)
+        self._reports.append(report)
+        
+        return {
+            "step_id": step_id,
+            "action": action,
+            "information_gain": information_gain,
+            "result": check.result.value,
+            "score": check.score,
+        }

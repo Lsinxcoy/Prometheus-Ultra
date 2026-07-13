@@ -102,6 +102,7 @@ class WeibullForgetting:
 
         # FSFM Security dimension: forget log
         self._safety_forget_log: list[dict] = []
+        self._forgotten_nodes: set[str] = set()  # Track nodes forgotten via safety trigger
 
     # ── Core Weibull ──
 
@@ -181,6 +182,9 @@ class WeibullForgetting:
         Solves: threshold = exp(-(t/λ)^k) for t
         Returns: t = λ × (-ln(threshold))^(1/k)
         """
+        # Check if node was explicitly forgotten
+        if node_id in self._forgotten_nodes:
+            return 0.0
         r = self._retentions.get(node_id, 1.0)
         if r <= threshold:
             return 0.0
@@ -228,10 +232,13 @@ class WeibullForgetting:
         already_forgotten: list[str] = []
 
         for nid in node_ids:
+            # Always track as forgotten, even if not in retentions
+            self._forgotten_nodes.add(nid)  # Track as forgotten
             if nid in self._retentions:
                 self._retentions[nid] = 0.0
                 self._access_times.pop(nid, None)
                 self._reinforcement_factors.pop(nid, None)
+                self._access_counts.pop(nid, None)  # Fix: also clear access counts
                 forgotten.append(nid)
             else:
                 already_forgotten.append(nid)

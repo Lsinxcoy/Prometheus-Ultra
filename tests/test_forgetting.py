@@ -413,8 +413,9 @@ class TestEdgeCases:
 
     def test_low_shape(self) -> None:
         w = WeibullForgetting(shape=0.3, scale=100.0)
-        # With low shape, retention drops quickly
-        assert w.compute_retention(10.0) < 0.5
+        # With low shape (k<1), retention drops SLOWER initially (infant mortality pattern)
+        # age=10 should have high retention (~0.6058), not < 0.5
+        assert w.compute_retention(10.0) > 0.5  # Corrected: higher retention for low shape
         assert w.compute_retention(100.0) == pytest.approx(math.exp(-1), rel=0.1)
 
     def test_large_scale(self) -> None:
@@ -429,11 +430,13 @@ class TestEdgeCases:
         assert wf.get_reinforcement_factor("node") <= 3.0
 
     def test_safety_log_ordering(self, wf: WeibullForgetting) -> None:
+        import time
         for i in range(3):
             wf.compute_retention_compat(f"n{i}", age=10.0)
+            time.sleep(0.001)  # Ensure different timestamps
             wf.safety_trigger_forget([f"n{i}"], reason=f"reason_{i}")
         log = wf.get_safety_forget_log()
         assert len(log) == 3
-        # Newest first
+        # Newest first (reverse=True means descending timestamp)
         assert log[0]["reason"] == "reason_2"
         assert log[-1]["reason"] == "reason_0"

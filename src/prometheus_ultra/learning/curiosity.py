@@ -179,7 +179,10 @@ class Curiosity:
     # 兼容别名: life.py 调用 add() / pop() / _queue
     def add(self, item: str, priority: int = 5) -> None:
         """添加探索项 (兼容队列接口)."""
-        self._seen[item] = min(priority / 5.0, 1.0)
+        score = min(priority / 5.0, 1.0)
+        self._seen[item] = score
+        self._curiosity_history.append(score)
+        self._total_exploration += score
     
     def pop(self) -> dict | None:
         """弹出最高优先级探索项."""

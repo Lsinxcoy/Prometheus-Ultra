@@ -1,0 +1,37 @@
+{
+  "rag_optimization": {
+    "type": "optimization",
+    "description": "Optimize RAG retrieval strategies using adaptive chunking and hybrid search",
+    "installed_at": 1783935969.7589068,
+    "version": "1.0.0",
+    "dependencies": []
+  },
+  "context_window_management": {
+    "type": "memory",
+    "description": "Dynamic context window management with token budget allocation",
+    "installed_at": 1783935969.7589068,
+    "version": "1.0.0",
+    "dependencies": []
+  },
+  "tool_selection": {
+    "type": "reasoning",
+    "description": "Adaptive tool selection based on task complexity and success history",
+    "installed_at": 1783935969.7589068,
+    "version": "1.0.0",
+    "dependencies": []
+  },
+  "multi_agent_orchestration": {
+    "type": "collaboration",
+    "description": "Coordinate multiple specialized agents for complex tasks",
+    "installed_at": 1783935969.7589068,
+    "version": "1.0.0",
+    "dependencies": []
+  },
+  "knowledge_distillation": {
+    "type": "learning",
+    "description": "Distill knowledge from large models into efficient smaller ones",
+    "installed_at": 1783935969.7589068,
+    "version": "1.0.0",
+    "dependencies": []
+  }
+}

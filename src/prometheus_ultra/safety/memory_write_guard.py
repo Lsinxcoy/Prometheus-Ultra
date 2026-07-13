@@ -304,7 +304,7 @@ def _check_system_summary(content: str) -> list[CheckResult]:
                 passed=True,
                 detail=f"average word length {avg_word_len:.1f} is normal",
             ))
-    else:
+    else:  # pragma: no cover - unreachable when content passes non_empty check
         results.append(CheckResult(
             name="avg_word_length",
             passed=True,
@@ -455,7 +455,7 @@ class MemoryWriteGuard:
             checks = _check_system_summary(content)
         elif source_upper == "RETRIEVED_CONTEXT":
             checks = _check_retrieved_context(content, context)
-        else:
+        else:  # pragma: no cover - unreachable after channel validation
             checks = []
 
         # --- Aggregate ---
